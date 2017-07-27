@@ -1,5 +1,4 @@
 <?php
-require_once (INCLUDE_DIR . 'class.format.php');
 require_once (INCLUDE_DIR . 'class.plugin.php');
 require_once (INCLUDE_DIR . 'class.signal.php');
 require_once ('config.php');
@@ -33,7 +32,6 @@ class CloserPlugin extends Plugin
     {
         // Listen for cron Signal, which only happens at end of class.cron.php:
         Signal::connect('cron', function () {
-            // Look for old open tickets, close em.
             $this->logans_run_mode();
         });
     }
@@ -56,22 +54,27 @@ class CloserPlugin extends Plugin
         $now = time(); // Assume server timezone doesn't change enough to break this
         $config->set('last-run', $now);
         
-        // Find purge frequency in a comparable format, seconds:
+        // assume a freqency of "Every Cron" means it is always overdue
+        $next_run = 0;
+        
+        // Convert purge frequency to a comparable format to timestamps:
         if ($freq_in_config = (int) $config->get('purge-frequency')) {
-            // Calculate when we want to run next:
-            $next_run = $last_run + ($freq_in_config * 60 * 60); // config is in hours, we need it in seconds 
-        } else {
-            $next_run = 0; // assume $freq of "Every Cron" means it is always overdue for a run.
+            // Calculate when we want to run next, config hours into seconds,
+            // plus the last run is the timestamp of the next scheduled run
+            $next_run = $last_run + ($freq_in_config * 60 * 60);
         }
         
-        // Must be time to run the checker:
+        // See if it's time to check old tickets
+        // Always run when in DEBUG mode.. because waiting for the scheduler is slow
+        // If we don't have a next_run, it's because we want it to run
+        // If the next run is in the past, then we are overdue, so, lets go!
         if (self::DEBUG || ! $next_run || $now > $next_run) {
             // Find any old tickets that we might need to work on:
-            $open_ticket_ids = $this->findOldTickets($config->get('purge-age'), $config->get('purge-num'));
+            $open_ticket_ids = $this->findOldTicketIds($config->get('purge-age'), $config->get('purge-num'));
             if (self::DEBUG)
                 error_log("CloserPlugin found " . count($open_ticket_ids));
             
-            // Bail if there's no work to do:
+            // Bail if there's no work to do
             if (! count($open_ticket_ids))
                 return;
             
@@ -81,7 +84,7 @@ class CloserPlugin extends Plugin
             // the word "closed" in another language. Use the ID instead:
             $closed_status = TicketStatus::lookup($config->get('closed-status'));
             $closed_time = SqlFunction::NOW(); // cached for multiple uses
-            $admin_note = $config->get('admin-note');
+            $admin_note = $config->get('admin-note'); // what to say about tickets as we close them. 
             
             // Go through the old tickets, close em:
             foreach ($open_ticket_ids as $ticket_id) {
@@ -89,8 +92,8 @@ class CloserPlugin extends Plugin
                 $ticket = Ticket::lookup($ticket_id);
                 if ($ticket instanceof Ticket) {
                     // Some tickets aren't closeable.. either because of open tasks, or missing fields.
-                    if ($ticket->isCloseable()) {
-                        
+                    // we can therefore only work on closeable tickets.
+                    if ($ticket->isCloseable()) {                        
                         // Post message to thread indicating it was closed because it hasn't been updated in X days.
                         if (strlen($admin_note)) {
                             $ticket->getThread()->addNote(array(
@@ -139,7 +142,7 @@ class CloserPlugin extends Plugin
      * @return array of integers that are Ticket::lookup compatible ID's of Open Tickets
      * @throws Exception so you have something interesting to read in your cron logs..
      */
-    private function findOldTickets($age_days, $max = 20)
+    private function findOldTicketIds($age_days, $max = 20)
     {
         // Again, we're not 100% sure what status-id each install
         // will use as the default or "Open" ticket status.
@@ -187,7 +190,6 @@ class CloserPlugin extends Plugin
     function uninstall()
     {
         $errors = array();
-        // Do we send an email to the admin telling him about the space used by the archive?
         global $ost;
         $ost->alertAdmin('Plugin: Closer has been uninstalled', "Old open tickets will remain active.", true);
         

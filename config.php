@@ -48,13 +48,13 @@ class CloserPluginConfig extends PluginConfig
                 'label' => $__('Max open Ticket age in days'),
                 'hint' => $__('Tickets with no updates in this many days will match and have their status changed.'),
                 'size' => 5,
-                'length' => 3
+                'length' => 4 // 4 digits allows for 27 years (9999 days)
             )),
             'closed-status' => new ChoiceField(array(
                 'label' => $__('Set Status'),
                 'choices' => $statuses,
                 'default' => 3,
-                'hint' => $__('When we "close" the ticket, what are we changing the status to?')
+                'hint' => $__('When we "close" the ticket, what are we changing the status to? Default is "Closed"')
             )),
             'purge-frequency' => new ChoiceField(array(
                 'label' => $__('Check Frequency'),
@@ -77,12 +77,12 @@ class CloserPluginConfig extends PluginConfig
             )),
             'purge-num' => new TextboxField(array(
                 'label' => $__('Tickets to close per run'),
-                'hint' => $__("How many old tickets should we close each time? (Keep low for auto-cron)"),
+                'hint' => $__("How many old tickets should we close each time? (small for auto-cron)"),
                 'default' => 20
             )),
             'admin-note' => new TextareaField(array(
                 'label' => $__('Auto-Note'),
-                'hint' => $__('Appended to thread as the system closes a ticket.'),
+                'hint' => $__('Create\'s an admin note just before closing.'),
                 'default' => 'Auto-closed for being open too long with no updates.',
                 'configuration' => array(
                     'html' => TRUE,
