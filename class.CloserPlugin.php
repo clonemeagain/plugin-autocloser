@@ -11,22 +11,17 @@ require_once ('config.php');
 class CloserPlugin extends Plugin
 {
 
-    /**
-     * Which config class to load
-     *
-     * @var string
-     */
     var $config_class = 'CloserPluginConfig';
 
     /**
-     * Set to TRUE to enable webserver logging, and extra logging.
+     * Set to TRUE to enable extra logging.
      *
      * @var boolean
      */
     const DEBUG = TRUE;
 
     /**
-     * Hook the bootstrap process, wait for tickets to be created.
+     * Hook the bootstrap process
      *
      * Run on every instantiation, so needs to be concise.
      *
@@ -36,14 +31,8 @@ class CloserPlugin extends Plugin
      */
     public function bootstrap()
     {
-        if (self::DUMPWHOLETHING) {
-            $this->log("Bootstrappin Closer..");
-        }
-        // Listen for cron complete calls Signal::send('cron', null, $data) at end of class.cron.php:
-        Signal::connect('cron', function ($ignored, $ignored) {
-            if (self::DEBUG) {
-                $this->log("Received cron signal");
-            }
+        // Listen for cron Signal, which only happens at end of class.cron.php:
+        Signal::connect('cron', function () {
             // Look for old open tickets, close em.
             $this->logans_run_mode();
         });
@@ -61,39 +50,78 @@ class CloserPlugin extends Plugin
     {
         $config = $this->getConfig();
         
-        // Instead of storing "next-run", we store "last-run", then compare frequency, in case frequency changes.
+        if (self::DEBUG)
+            print_r($config);
+        
+        // We can store arbitrary things in the config, like, when we ran this last:
         $last_run = $config->get('last-run');
         $now = time(); // Assume server timezone doesn't change enough to break this
-                       
+        $config->set('last-run', $now);
+        
         // Find purge frequency in a comparable format, seconds:
-        $freq_in_seconds = (int) $config->get('purge-frequency') * 60 * 60;
+        if ($freq_in_config = (int) $config->get('purge-frequency')) {
+            // Calculate when we want to run next:
+            $next_run = $last_run + ($freq_in_config * 60 * 60);
+        } else {
+            $next_run = 0; // assume $freq of "Every Cron" means it is always overdue for a run.
+        }
         
-        // Calculate when we want to run next:
-        $next_run = $last_run + $freq_in_seconds;
-        
-        // Compare intention with reality:
+        // Must be time to run the checker:
         if (self::DEBUG || ! $next_run || $now > $next_run) {
-            $config->set('last-run', $now);
+            // Find any old tickets that we might need to work on:
+            $open_ticket_ids = $this->findOldTickets($config->get('purge-age'), $config->get('purge-num'));
+            if (self::DEBUG)
+                error_log("CloserPlugin found " . count($open_ticket_ids));
             
-            // Fetch the rest of the admin settings, now that we're actually going through with this:
-            $age_days = (int) $config->get('purge-age');
-            $max_purge = (int) $config->get('purge-num');
+            // Bail if there's no work to do:
+            if (! count($open_ticket_ids))
+                return;
             
-            foreach ($this->findOldTickets($age_days, $max_purge) as $ticket_id) {
-                // Fetch the ticket
-                $t = Ticket::lookup($ticket_id);
-                if ($t instanceof Ticket) {
-                    // Post message to thread indicating it was closed because it hasn't been updated in X days.
-                    if ($msg = $config->get('admin-message')) {
-                        $t->getThread()->addNote(array(
-                            'note' => $msg
+            // Fetch the ticket status that indicates the ticket is closed,
+            // or, whatever the admin specified:
+            // It's 3 on mine.. but other languages exist.. so, it might not be
+            // the word "closed" in another language. Use the ID instead:
+            $closed_status = TicketStatus::lookup($config->get('closed-status'));
+            $closed_time = SqlFunction::NOW(); // cached for multiple uses
+            $admin_note = $config->get('admin-note');
+            
+            // Go through the old tickets, close em:
+            foreach ($open_ticket_ids as $ticket_id) {
+                // Fetch the ticket as an Object, let's us call ->save() on it when we're done.
+                $ticket = Ticket::lookup($ticket_id);
+                if ($ticket instanceof Ticket) {
+                    // Some tickets aren't closeable.. either because of open tasks, or missing fields.
+                    if ($ticket->isCloseable()) {
+                        
+                        // Post message to thread indicating it was closed because it hasn't been updated in X days.
+                        if (strlen($admin_note)) {
+                            $ticket->getThread()->addNote(array(
+                                // TODO: we could even supply a template to reply to the User.. if required.
+                                'note' => $admin_note
+                            ));
+                        }
+                        if (self::DEBUG) {
+                            error_log("Closing ticket {$ticket_id}::{$ticket->getSubject()}");
+                        }
+                        
+                        // Could use $ticket->setStatus($closed_status) function
+                        // however, this gives us control over _how_ it is closed.
+                        // preventing accidentally making any logged-in staff
+                        // associated with the closure, which is an issue with AutoCron
+                        $ticket->closed = $ticket->lastupdate = $closed_time;
+                        $ticket->duedate = null;
+                        $ticket->clearOverdue(FALSE);
+                        $ticket->logEvent('closed', array(
+                            'status' => array(
+                                $closed_status->getId(),
+                                $closed_status->getName()
+                            )
                         ));
+                        $ticket->status = $closed_status;
+                        $ticket->save();
+                    } else {
+                        error_log("Unable to close ticket {$ticket->getSubject()}, check it manually: id# {$ticket_id}");
                     }
-                    if (self::DEBUG) {
-                        error_log("Closing ticket {$t->getId()}::{$t->getSubject()}");
-                    }
-                    // get out of here!
-                    $t->close();
                 }
             }
         }
@@ -106,25 +134,47 @@ class CloserPlugin extends Plugin
      *
      * Could be made static so other classes can find old tickets..
      *
-     * @return array
      * @param int $age_days
      *            admin configuration max-age for an un-updated ticket.
-     * @param int $max_purge
-     *            how many are we marking as closed each cron run?
+     * @param int $max
+     *            don't find more than this many at once
+     * @return array of integers that are Ticket::lookup compatible ID's of Open Tickets
+     * @throws Exception so you have something interesting to read in your cron logs..
      */
-    private function findOldTickets($age_days, $max_purge = 20)
+    private function findOldTickets($age_days, $max = 20)
     {
-        if (! $age_days) {
-            return array();
-        }
+        // Again, we're not 100% sure what status-id each install
+        // will use as the default or "Open" ticket status.
+        // So, we'll attempt to use what the system uses when creating a ticket,
+        // and just kinda hope it works.
+        global $cfg;
+        if (! $cfg instanceof OsticketConfig)
+            throw new Exception("Unable to use cfg as it isn't an OsticketConfig object.");
         
-        $ids = array();
-        $r = db_query('SELECT ticket_id FROM ' . TICKET_TABLE . ' WHERE lastupdate > DATE_SUB(NOW(), INTERVAL ' . $age_days . ' DAY) ORDER BY ticket_id ASC LIMIT ' . $max_purge);
-        while ($i = db_fetch_array($r)) {
-            $ids[] = $i['ticket_id'];
-        }
+        $open_status = $cfg->getDefaultTicketStatusId();
+        // todo: Do we verify this $open_status exists? Or just use it.. shit.
+        
+        if (! $age_days)
+            throw new Exception("No max age specified.");
+        
+        // Ticket query, note MySQL is doing all the date maths:
+        // Sidebar: Why haven't we moved to PDO yet?
+        $sql = sprintf('
+            SELECT ticket_id
+            FROM %s
+            WHERE status_id = %d AND lastupdate > DATE_SUB(NOW(), INTERVAL %d DAY)
+            ORDER BY ticket_id ASC
+            LIMIT %d', TICKET_TABLE, $open_status, $age_days, $max);
+        
         if (self::DEBUG)
-            error_log("Deleting " . count($ids));
+            error_log("Running query: $sql");
+        
+        $r = db_query($sql);
+        
+        // Fill an array with just the ID's of the tickets:
+        $ids = array();
+        while ($i = db_fetch_array($r, MYSQLI_ASSOC))
+            $ids[] = $i['ticket_id'];
         
         return $ids;
     }
