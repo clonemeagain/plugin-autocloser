@@ -18,7 +18,7 @@ class CloserPlugin extends Plugin
      *
      * @var boolean
      */
-    const DEBUG = TRUE;
+    const DEBUG = FALSE;
 
     /**
      * Hook the bootstrap process
@@ -40,6 +40,7 @@ class CloserPlugin extends Plugin
 
     /**
      * Closes old tickets..
+     * with extreme prejudice.. or, regular prejudice.. whatever.
      *
      * = Welcome to the 23rd Century.
      * The perfect world of total pleasure.
@@ -50,9 +51,6 @@ class CloserPlugin extends Plugin
     {
         $config = $this->getConfig();
         
-        if (self::DEBUG)
-            print_r($config);
-        
         // We can store arbitrary things in the config, like, when we ran this last:
         $last_run = $config->get('last-run');
         $now = time(); // Assume server timezone doesn't change enough to break this
@@ -61,7 +59,7 @@ class CloserPlugin extends Plugin
         // Find purge frequency in a comparable format, seconds:
         if ($freq_in_config = (int) $config->get('purge-frequency')) {
             // Calculate when we want to run next:
-            $next_run = $last_run + ($freq_in_config * 60 * 60);
+            $next_run = $last_run + ($freq_in_config * 60 * 60); // config is in hours, we need it in seconds 
         } else {
             $next_run = 0; // assume $freq of "Every Cron" means it is always overdue for a run.
         }
