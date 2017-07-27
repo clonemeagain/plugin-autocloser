@@ -69,6 +69,7 @@ class CloserPlugin extends Plugin
         // If we don't have a next_run, it's because we want it to run
         // If the next run is in the past, then we are overdue, so, lets go!
         if (self::DEBUG || ! $next_run || $now > $next_run) {
+            
             // Find any old tickets that we might need to work on:
             $open_ticket_ids = $this->findOldTicketIds($config->get('purge-age'), $config->get('purge-num'));
             if (self::DEBUG)
@@ -83,35 +84,42 @@ class CloserPlugin extends Plugin
             // It's 3 on mine.. but other languages exist.. so, it might not be
             // the word "closed" in another language. Use the ID instead:
             $closed_status = TicketStatus::lookup($config->get('closed-status'));
-            $closed_time = SqlFunction::NOW(); // cached for multiple uses
-            $admin_note = $config->get('admin-note'); // what to say about tickets as we close them. 
+            $closed_time = SqlFunction::NOW();
+            $admin_note = $config->get('admin-note');
             
             // Go through the old tickets, close em:
             foreach ($open_ticket_ids as $ticket_id) {
+                
                 // Fetch the ticket as an Object, let's us call ->save() on it when we're done.
                 $ticket = Ticket::lookup($ticket_id);
                 if ($ticket instanceof Ticket) {
+                    
                     // Some tickets aren't closeable.. either because of open tasks, or missing fields.
                     // we can therefore only work on closeable tickets.
-                    if ($ticket->isCloseable()) {                        
+                    if ($ticket->isCloseable()) {
+                        
                         // Post message to thread indicating it was closed because it hasn't been updated in X days.
                         if (strlen($admin_note)) {
+                            
                             $ticket->getThread()->addNote(array(
                                 // TODO: we could even supply a template to reply to the User.. if required.
                                 'note' => $admin_note
                             ));
                         }
-                        if (self::DEBUG) {
+                        if (self::DEBUG)
                             error_log("Closing ticket {$ticket_id}::{$ticket->getSubject()}");
-                        }
                         
+                        // This is the part that actually "Closes" the tickets
+                        //
+                        // Well, depending on the admin settings I mean.
+                        //
                         // Could use $ticket->setStatus($closed_status) function
                         // however, this gives us control over _how_ it is closed.
                         // preventing accidentally making any logged-in staff
                         // associated with the closure, which is an issue with AutoCron
                         $ticket->closed = $ticket->lastupdate = $closed_time;
                         $ticket->duedate = null;
-                        $ticket->clearOverdue(FALSE);
+                        $ticket->clearOverdue(FALSE); // hold off saving, we'll do that
                         $ticket->logEvent('closed', array(
                             'status' => array(
                                 $closed_status->getId(),
@@ -119,7 +127,7 @@ class CloserPlugin extends Plugin
                             )
                         ));
                         $ticket->status = $closed_status;
-                        $ticket->save();
+                        $ticket->save(FALSE); // prevent it refetching the ticket data.
                     } else {
                         error_log("Unable to close ticket {$ticket->getSubject()}, check it manually: id# {$ticket_id}");
                     }
@@ -144,19 +152,20 @@ class CloserPlugin extends Plugin
      */
     private function findOldTicketIds($age_days, $max = 20)
     {
-        // Again, we're not 100% sure what status-id each install
+        // Not 100% sure what status-id each install
         // will use as the default or "Open" ticket status.
-        // So, we'll attempt to use what the system uses when creating a ticket,
-        // and just kinda hope it works.
+        // So, we'll attempt to use what the system uses when
+        // creating a ticket, and just kinda hope it works.
+        // so far, so good.
         global $cfg;
         if (! $cfg instanceof OsticketConfig)
             throw new Exception("Unable to use cfg as it isn't an OsticketConfig object.");
         
         $open_status = $cfg->getDefaultTicketStatusId();
-        // todo: Do we verify this $open_status exists? Or just use it.. shit.
+        // todo: Do we verify this $open_status id exists? Or just use it.. shit.
         
-        if (! $age_days)
-            throw new Exception("No max age specified.");
+        if (! $age_days || !is_numeric($age_days))
+            throw new Exception("No max age specified, or [$age_days] can't be used as a number.");
         
         // Ticket query, note MySQL is doing all the date maths:
         // Sidebar: Why haven't we moved to PDO yet?
@@ -168,7 +177,7 @@ class CloserPlugin extends Plugin
             LIMIT %d', TICKET_TABLE, $open_status, $age_days, $max);
         
         if (self::DEBUG)
-            error_log("Running query: $sql");
+            error_log("Looking for old tickets with query: $sql");
         
         $r = db_query($sql);
         
