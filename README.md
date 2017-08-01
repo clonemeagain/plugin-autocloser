@@ -23,7 +23,7 @@ Visit the Admin-panel, select Manage => Plugins, choose the `Ticket Closer` plug
 ## Admin Options
 
 - Max open Ticket age in days: Specify how many days is too many with no activity for an open ticket, simply enter a number of days, when that has passed, the ticket will be closed automatically.
-- Only close tickets with an Agent Response: Defaults to off, however if you tick this box, it will not consider tickets that haven't been replied to as being old, even if they have no activity for more than Max open Ticket age.
+- Only close tickets with an Agent Response: Defaults to on, if ticked, it will not consider tickets that haven't been replied to as being old, even if they have no activity for more than Max open Ticket age.
 - Only close tickets past expiry date: Defaults to off, however, if you use expiration dates on tickets, and want tickets closed only if they have expired, then this will help, it ignores other settings if a ticket has yet to expire. 
 - From Status: Ideally you'd set it to "Open", because the point is to Close tickets by changing status to "Closed", however, if you only want to work with tickets in "Awaiting Reply" or whatever custom status you've created, you can specify it here. 
 - To Status: Technically, the plugin is changing the ticket's status, so, you can actually select from the list of available statuses and it will change it to that.. kinda pointless changing to "Open", but it's possible. You might prefer "Resolved" if you use that status. The ticket will still have the event "Closed", because that is what it was programmed to do, if you want something different, [let me know](https://github.com/clonemeagain/plugin-autocloser/issues/new), and I'll add an option.
@@ -37,7 +37,7 @@ Simply "Delete" the plugin and add it again, all the configuration will reset fr
 
 Defaults as per code:
 * Max age of open: 999 days which is a bit more than 2 & 1/2 years. Likely a good default.
-* Only close tickets with an Agent Response: False
+* Only close tickets with an Agent Response: True
 * Only close tickets past expiry date: False
 * From Status: Open
 * To Status: Closed
