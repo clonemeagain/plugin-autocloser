@@ -60,14 +60,14 @@ class CloserPluginConfig extends PluginConfig
                 'label' => $__('Only close tickets past expiry date'),
                 'hint' => $__('Default ignores expiry')
             )),
-            'from-status' => new ChoiceField(array(
-                'label' => $__('Only From This Status'),
+            'from-status' => new ChoiceField(array( 
+                'label' => $__('From Status'),
                 'choices' => $statuses,
                 'default' => 1,
-                'hint' => $__('When we "close" the ticket, what are we changing the status from? Default is "Open"')
+                'hint' => $__('When we "close" the ticket, what are we changing the status from? Default is "Open"') 
             )),
             'closed-status' => new ChoiceField(array(
-                'label' => $__('Set Status'),
+                'label' => $__('To Status'),
                 'choices' => $statuses,
                 'default' => 3,
                 'hint' => $__('When we "close" the ticket, what are we changing the status to? Default is "Closed"')
