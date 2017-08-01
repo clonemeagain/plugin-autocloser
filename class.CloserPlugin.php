@@ -17,7 +17,7 @@ class CloserPlugin extends Plugin
      *
      * @var boolean
      */
-    const DEBUG = FALSE;
+    const DEBUG = TRUE;
 
     /**
      * Hook the bootstrap process
@@ -71,7 +71,13 @@ class CloserPlugin extends Plugin
         if (self::DEBUG || ! $next_run || $now > $next_run) {
             
             // Find any old tickets that we might need to work on:
-            $open_ticket_ids = $this->findOldTicketIds($config->get('purge-age'), $config->get('purge-num'));
+            $age = (int) $config->get('purge-age');
+            $num = (int) $config->get('purge-num');
+            $onlyAnswered = (bool) $config->get('close-only-answered');
+            $onlyOverdue = (bool) $config->get('close-only-overdue');
+            
+            // if we have any more, might as well pass the damn config to the function.. 
+            $open_ticket_ids = $this->findOldTicketIds($age, $num, $onlyAnswered, $onlyOverdue);
             if (self::DEBUG)
                 error_log("CloserPlugin found " . count($open_ticket_ids));
             
@@ -86,6 +92,7 @@ class CloserPlugin extends Plugin
             $closed_status = TicketStatus::lookup($config->get('closed-status'));
             $closed_time = SqlFunction::NOW();
             $admin_note = $config->get('admin-note');
+            $admin_reply = $config->get('admin-reply');
             
             // Go through the old tickets, close em:
             foreach ($open_ticket_ids as $ticket_id) {
@@ -100,12 +107,22 @@ class CloserPlugin extends Plugin
                         
                         // Post message to thread indicating it was closed because it hasn't been updated in X days.
                         if (strlen($admin_note)) {
-                            
                             $ticket->getThread()->addNote(array(
-                                // TODO: we could even supply a template to reply to the User.. if required.
                                 'note' => $admin_note
                             ));
                         }
+                        
+                        // Post Reply to the user, telling them the ticket is closed, relates to issue #2
+                        if (strlen($admin_reply)) {
+                            // Replace any ticket variables in the message:
+                            $custom_reply = $ticket->replaceVars ( $admin_reply, array (
+                                'recipient' => $ticket->getOwner(),
+                            ) );
+                            $ticket->getThread()->addMessage(array(
+                                'message' => $custom_reply
+                            ));
+                        }
+                        
                         if (self::DEBUG)
                             error_log("Closing ticket {$ticket_id}::{$ticket->getSubject()}");
                         
@@ -147,10 +164,14 @@ class CloserPlugin extends Plugin
      *            admin configuration max-age for an un-updated ticket.
      * @param int $max
      *            don't find more than this many at once
+     * @param bool $onlyAnswered
+     *            set to true to filter tickets to only those that have an agent answer
+     * @param bool $onlyOverdue
+     *            set to true to filter tickets to only those that are overdue
      * @return array of integers that are Ticket::lookup compatible ID's of Open Tickets
      * @throws Exception so you have something interesting to read in your cron logs..
      */
-    private function findOldTicketIds($age_days, $max = 20)
+    private function findOldTicketIds($age_days, $max = 20, $onlyAnswered = FALSE, $onlyOverdue = FALSE)
     {
         // Not 100% sure what status-id each install
         // will use as the default or "Open" ticket status.
@@ -164,7 +185,17 @@ class CloserPlugin extends Plugin
         $open_status = $cfg->getDefaultTicketStatusId();
         // todo: Do we verify this $open_status id exists? Or just use it.. shit.
         
-        if (! $age_days || !is_numeric($age_days))
+        $whereFilter = '';
+        
+        if ($onlyAnswered) {
+            $whereFilter .= ' AND isanswered=1';
+        }
+        
+        if ($onlyOverdue) {
+            $whereFilter .= ' AND isoverdue=1';
+        }
+        
+        if (! $age_days || ! is_numeric($age_days))
             throw new Exception("No max age specified, or [$age_days] can't be used as a number.");
         
         // Ticket query, note MySQL is doing all the date maths:
@@ -173,8 +204,9 @@ class CloserPlugin extends Plugin
             SELECT ticket_id
             FROM %s
             WHERE status_id = %d AND lastupdate > DATE_SUB(NOW(), INTERVAL %d DAY)
+            %s
             ORDER BY ticket_id ASC
-            LIMIT %d', TICKET_TABLE, $open_status, $age_days, $max);
+            LIMIT %d', TICKET_TABLE, $open_status, $age_days, $whereFilter, $max);
         
         if (self::DEBUG)
             error_log("Looking for old tickets with query: $sql");

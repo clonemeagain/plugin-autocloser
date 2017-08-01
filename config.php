@@ -39,7 +39,7 @@ class CloserPluginConfig extends PluginConfig
         $res = db_query("SELECT id,name FROM " . TICKET_STATUS_TABLE);
         $statuses = array();
         while ($row = db_fetch_array($res, MYSQLI_ASSOC)) {
-            $statuses[$row['id']] = $row['name'];
+            $statuses[$row['id']] = $row['name']; // Neatly avoids the language issue.. for this one thing.
         }
         
         return array(
@@ -48,7 +48,17 @@ class CloserPluginConfig extends PluginConfig
                 'label' => $__('Max open Ticket age in days'),
                 'hint' => $__('Tickets with no updates in this many days will match and have their status changed.'),
                 'size' => 5,
-                'length' => 4 // 4 digits allows for 27 years (9999 days)
+                'length' => 4 
+            )),
+            'close-only-answered' => new BooleanField(array(
+                'default' => TRUE,
+                'label' => $__('Only close tickets with an Agent Response'),
+                'hint' => ''
+            )),
+            'close-only-overdue' => new BooleanField(array(
+                'default' => FALSE,
+                'label' => $__('Only close tickets past expiry date'),
+                'hint' => $__('Default ignores expiry')
             )),
             'closed-status' => new ChoiceField(array(
                 'label' => $__('Set Status'),
@@ -68,7 +78,7 @@ class CloserPluginConfig extends PluginConfig
                     '36' => $__('Every 36 Hours'),
                     '48' => $__('Every 2 Days'),
                     '72' => $__('Every 72 Hours'),
-                    '168' => $__('Every Week'),
+                    '168' => $__('Every Week'),// This is how much banked Annual Leave I have in my day-job.. noice 
                     '730' => $__('Every Month'),
                     '8760' => $__('Every Year')
                 ),
@@ -89,7 +99,22 @@ class CloserPluginConfig extends PluginConfig
                     'size' => 40,
                     'length' => 256
                 )
-            ))
+            )),
+            'admin-reply' => new TextareaField(array(
+                'label' => $__('Auto-Reply'),
+                'hint' => $__('Create\'s an admin reply just before closing (can use Ticket Variables).'),
+                'default' => '<p>Hi %{ticket.name.first},
+<br /><br />
+Regarding ticket #%{ticket.number} <a href="%{recipient.ticket_link}">%{ticket.subject}</a>
+<br /><br />
+Please be advised that our support system has closed your ticket due to expiration of an inactivity timer.<br />
+To reopen, please reply at your convenience, if however you consider the matter closed, simply ignore this message and have a lovely day.</p>',
+                'configuration' => array(
+                    'html' => TRUE,
+                    'size' => 40,
+                    'length' => 256
+                )
+            )),
         
         );
     }
