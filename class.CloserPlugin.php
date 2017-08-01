@@ -88,6 +88,10 @@ class CloserPlugin extends Plugin
             $admin_note = $config->get('admin-note');
             $admin_reply = $config->get('admin-reply');
             
+            if (self::DEBUG) {
+                print "Found the following details:\nAdmin Note: $admin_note\n\nAdmin Reply: $admin_reply\n";
+            }
+            
             // Go through the old tickets, close em:
             foreach ($open_ticket_ids as $ticket_id) {
                 
@@ -98,23 +102,26 @@ class CloserPlugin extends Plugin
                     // Some tickets aren't closeable.. either because of open tasks, or missing fields.
                     // we can therefore only work on closeable tickets.
                     if ($ticket->isCloseable()) {
+                        // We ignore any posting errors, but the functions like to take an array anyway
+                        $errors = array();
                         
-                        // Post message to thread indicating it was closed because it hasn't been updated in X days.
+                        // Post Note to thread indicating it was closed because it hasn't been updated in X days.
                         if (strlen($admin_note)) {
                             $ticket->getThread()->addNote(array(
-                                'note' => $admin_note
-                            ));
+                                'note' => $admin_note // Posts Note as SYSTEM, no ticket vars, no email alert
+                            ), $errors);
                         }
                         
                         // Post Reply to the user, telling them the ticket is closed, relates to issue #2
                         if (strlen($admin_reply)) {
                             // Replace any ticket variables in the message:
-                            $custom_reply = $ticket->replaceVars ( $admin_reply, array (
-                                'recipient' => $ticket->getOwner(),
-                            ) );
-                            $ticket->getThread()->addMessage(array(
-                                'message' => $custom_reply
+                            $custom_reply = $ticket->replaceVars($admin_reply, array(
+                                'recipient' => $ticket->getOwner() // send as the assigned staff.. sneaky
                             ));
+                            // Send the alert. TRUE flag indicates send the email alert..
+                            $ticket->postReply(array(
+                                'response' => $custom_reply
+                            ), $errors, TRUE);
                         }
                         
                         if (self::DEBUG)
@@ -128,17 +135,26 @@ class CloserPlugin extends Plugin
                         // however, this gives us control over _how_ it is closed.
                         // preventing accidentally making any logged-in staff
                         // associated with the closure, which is an issue with AutoCron
+                        
+                        // Start by setting the last update and closed timestamps to now
                         $ticket->closed = $ticket->lastupdate = $closed_time;
+                        
+                        // Remove any duedate or overdue flags
                         $ticket->duedate = null;
-                        $ticket->clearOverdue(FALSE); // hold off saving, we'll do that
+                        $ticket->clearOverdue(FALSE); // flag prevents saving, we'll do that
+                                                      
+                        // Post an Event with the current timestamp. Could be confusing if a non-closed end-status selected.. hmm.
                         $ticket->logEvent('closed', array(
                             'status' => array(
                                 $closed_status->getId(),
                                 $closed_status->getName()
                             )
                         ));
+                        // Actually apply the "TicketStatus" to the Ticket.
                         $ticket->status = $closed_status;
-                        $ticket->save(FALSE); // prevent it refetching the ticket data.
+                        
+                        // Save it, flag prevents it refetching the ticket data straight away (inefficient)
+                        $ticket->save(FALSE);
                     } else {
                         error_log("Unable to close ticket {$ticket->getSubject()}, check it manually: id# {$ticket_id}");
                     }
