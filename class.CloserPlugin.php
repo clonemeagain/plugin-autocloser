@@ -71,13 +71,7 @@ class CloserPlugin extends Plugin
         if (self::DEBUG || ! $next_run || $now > $next_run) {
             
             // Find any old tickets that we might need to work on:
-            $age = (int) $config->get('purge-age');
-            $num = (int) $config->get('purge-num');
-            $onlyAnswered = (bool) $config->get('close-only-answered');
-            $onlyOverdue = (bool) $config->get('close-only-overdue');
-            
-            // if we have any more, might as well pass the damn config to the function.. 
-            $open_ticket_ids = $this->findOldTicketIds($age, $num, $onlyAnswered, $onlyOverdue);
+            $open_ticket_ids = $this->findOldTicketIds($config);
             if (self::DEBUG)
                 error_log("CloserPlugin found " . count($open_ticket_ids));
             
@@ -171,19 +165,14 @@ class CloserPlugin extends Plugin
      * @return array of integers that are Ticket::lookup compatible ID's of Open Tickets
      * @throws Exception so you have something interesting to read in your cron logs..
      */
-    private function findOldTicketIds($age_days, $max = 20, $onlyAnswered = FALSE, $onlyOverdue = FALSE)
+    private function findOldTicketIds($config)
     {
-        // Not 100% sure what status-id each install
-        // will use as the default or "Open" ticket status.
-        // So, we'll attempt to use what the system uses when
-        // creating a ticket, and just kinda hope it works.
-        // so far, so good.
-        global $cfg;
-        if (! $cfg instanceof OsticketConfig)
-            throw new Exception("Unable to use cfg as it isn't an OsticketConfig object.");
-        
-        $open_status = $cfg->getDefaultTicketStatusId();
-        // todo: Do we verify this $open_status id exists? Or just use it.. shit.
+        // fetch config for finder:
+        $age_days = (int) $config->get('purge-age');
+        $max = (int) $config->get('purge-num');
+        $onlyAnswered = (bool) $config->get('close-only-answered');
+        $onlyOverdue = (bool) $config->get('close-only-overdue');
+        $from_status = (int) $config->get('from-status');
         
         $whereFilter = '';
         
@@ -206,7 +195,7 @@ class CloserPlugin extends Plugin
             WHERE status_id = %d AND lastupdate > DATE_SUB(NOW(), INTERVAL %d DAY)
             %s
             ORDER BY ticket_id ASC
-            LIMIT %d', TICKET_TABLE, $open_status, $age_days, $whereFilter, $max);
+            LIMIT %d', TICKET_TABLE, $from_status, $age_days, $whereFilter, $max);
         
         if (self::DEBUG)
             error_log("Looking for old tickets with query: $sql");
