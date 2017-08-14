@@ -17,7 +17,7 @@ class CloserPlugin extends Plugin
      *
      * @var boolean
      */
-    const DEBUG = TRUE;
+    const DEBUG = FALSE;
 
     /**
      * Hook the bootstrap process
@@ -32,6 +32,7 @@ class CloserPlugin extends Plugin
     {
         // Listen for cron Signal, which only happens at end of class.cron.php:
         Signal::connect('cron', function ($ignored, $data) {
+            // Ignore autocron instantiation.. for now. simply comment out the following line to let autocron run:
             if (! isset($data['autocron']) || $data['autocron'] == false)
                 $this->logans_run_mode();
         });
