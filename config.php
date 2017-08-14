@@ -48,7 +48,7 @@ class CloserPluginConfig extends PluginConfig
                 'label' => $__('Max open Ticket age in days'),
                 'hint' => $__('Tickets with no updates in this many days will match and have their status changed.'),
                 'size' => 5,
-                'length' => 4 
+                'length' => 4
             )),
             'close-only-answered' => new BooleanField(array(
                 'default' => TRUE,
@@ -60,11 +60,11 @@ class CloserPluginConfig extends PluginConfig
                 'label' => $__('Only close tickets past expiry date'),
                 'hint' => $__('Default ignores expiry')
             )),
-            'from-status' => new ChoiceField(array( 
+            'from-status' => new ChoiceField(array(
                 'label' => $__('From Status'),
                 'choices' => $statuses,
                 'default' => 1,
-                'hint' => $__('When we "close" the ticket, what are we changing the status from? Default is "Open"') 
+                'hint' => $__('When we "close" the ticket, what are we changing the status from? Default is "Open"')
             )),
             'closed-status' => new ChoiceField(array(
                 'label' => $__('To Status'),
@@ -84,12 +84,17 @@ class CloserPluginConfig extends PluginConfig
                     '36' => $__('Every 36 Hours'),
                     '48' => $__('Every 2 Days'),
                     '72' => $__('Every 72 Hours'),
-                    '168' => $__('Every Week'),// This is how much banked Annual Leave I have in my day-job.. noice 
+                    '168' => $__('Every Week'), // This is how much banked Annual Leave I have in my day-job.. noice
                     '730' => $__('Every Month'),
                     '8760' => $__('Every Year')
                 ),
                 'default' => '2',
                 'hint' => $__("How often should we check for old tickets?")
+            )),
+            'use_autocron' => new BooleanField(array(
+                'label' => $__('Use Autocron'),
+                'default' => 0,
+                'hint' => $__('If you only have auto-cron, you will want this on.')
             )),
             'purge-num' => new TextboxField(array(
                 'label' => $__('Tickets to close per run'),
@@ -120,7 +125,7 @@ To reopen, please reply at your convenience, if however you consider the matter 
                     'size' => 40,
                     'length' => 256
                 )
-            )),
+            ))
         
         );
     }

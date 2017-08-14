@@ -32,9 +32,24 @@ class CloserPlugin extends Plugin
     {
         // Listen for cron Signal, which only happens at end of class.cron.php:
         Signal::connect('cron', function ($ignored, $data) {
-            // Ignore autocron instantiation.. for now. simply comment out the following line to let autocron run:
-            if (! isset($data['autocron']) || $data['autocron'] == false)
+            
+            // Autocron is an admin option, we can filter out Autocron Signals
+            // to ensure changing state for potentially hundreds/thousands
+            // of tickets doesn't affect interactive Agent/User experience.
+            $use_autocron = $this->getConfig()->get('use_autocron');
+            
+            // Autocron Cron Signals are sent with this array key set to TRUE
+            $is_autocron = (isset($data['autocron']) && $data['autocron']);
+            
+            // Normal cron isn't Autocron:
+            $cli_cron = !$is_autocron;
+            
+            if ($cli_cron) {
                 $this->logans_run_mode();
+                
+            } elseif ($use_autocron && $is_autocron) {
+                $this->logans_run_mode();
+            }
         });
     }
 
@@ -85,8 +100,8 @@ class CloserPlugin extends Plugin
             // or, whatever the admin specified:
             // It's 3 on mine.. but other languages exist.. so, it might not be
             // the word "closed" in another language. Use the ID instead:
-            $closed_status = TicketStatus::lookup($config->get('closed-status'));
-            $closed_time = SqlFunction::NOW();
+            $new_status = TicketStatus::lookup($config->get('closed-status'));
+            $sql_now = SqlFunction::NOW();
             $admin_note = $config->get('admin-note');
             $admin_reply = $config->get('admin-reply');
             
@@ -139,21 +154,21 @@ class CloserPlugin extends Plugin
                         // associated with the closure, which is an issue with AutoCron
                         
                         // Start by setting the last update and closed timestamps to now
-                        $ticket->closed = $ticket->lastupdate = $closed_time;
+                        $ticket->closed = $ticket->lastupdate = $sql_now;
                         
                         // Remove any duedate or overdue flags
                         $ticket->duedate = null;
                         $ticket->clearOverdue(FALSE); // flag prevents saving, we'll do that
                                                       
                         // Post an Event with the current timestamp.
-                        $ticket->logEvent($closed_status->getState(), array(
+                        $ticket->logEvent($new_status->getState(), array(
                             'status' => array(
-                                $closed_status->getId(),
-                                $closed_status->getName()
+                                $new_status->getId(),
+                                $new_status->getName()
                             )
                         ));
-                        // Actually apply the "TicketStatus" to the Ticket.
-                        $ticket->status = $closed_status;
+                        // Actually apply the new "TicketStatus" to the Ticket.
+                        $ticket->status = $new_status;
                         
                         // Save it, flag prevents it refetching the ticket data straight away (inefficient)
                         $ticket->save(FALSE);
