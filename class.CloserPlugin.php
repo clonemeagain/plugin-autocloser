@@ -17,7 +17,7 @@ class CloserPlugin extends Plugin
      *
      * @var boolean
      */
-    const DEBUG = FALSE;
+    const DEBUG = TRUE;
 
     /**
      * Hook the bootstrap process
@@ -31,8 +31,9 @@ class CloserPlugin extends Plugin
     public function bootstrap()
     {
         // Listen for cron Signal, which only happens at end of class.cron.php:
-        Signal::connect('cron', function () {
-            $this->logans_run_mode();
+        Signal::connect('cron', function ($ignored, $data) {
+            if (! isset($data['autocron']) || $data['autocron'] == false)
+                $this->logans_run_mode();
         });
     }
 
@@ -143,8 +144,8 @@ class CloserPlugin extends Plugin
                         $ticket->duedate = null;
                         $ticket->clearOverdue(FALSE); // flag prevents saving, we'll do that
                                                       
-                        // Post an Event with the current timestamp. Could be confusing if a non-closed end-status selected.. hmm.
-                        $ticket->logEvent('closed', array(
+                        // Post an Event with the current timestamp.
+                        $ticket->logEvent($closed_status->getState(), array(
                             'status' => array(
                                 $closed_status->getId(),
                                 $closed_status->getName()
@@ -205,13 +206,12 @@ class CloserPlugin extends Plugin
         
         // Ticket query, note MySQL is doing all the date maths:
         // Sidebar: Why haven't we moved to PDO yet?
-        $sql = sprintf('
-            SELECT ticket_id
-            FROM %s
-            WHERE status_id = %d AND lastupdate > DATE_SUB(NOW(), INTERVAL %d DAY)
-            %s
-            ORDER BY ticket_id ASC
-            LIMIT %d', TICKET_TABLE, $from_status, $age_days, $whereFilter, $max);
+        $sql = sprintf("
+SELECT ticket_id 
+FROM %s WHERE lastupdate < DATE_SUB(NOW(), INTERVAL %d DAY)
+AND status_id=%d %s
+ORDER BY ticket_id ASC
+LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
         
         if (self::DEBUG)
             error_log("Looking for old tickets with query: $sql");
