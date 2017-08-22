@@ -32,6 +32,10 @@ Visit the Admin-panel, select Manage => Plugins, choose the `Ticket Closer` plug
 - Auto-Note: Admin can specify a note to append to the message thread (Note, not Reply/Message), doesn't get emailed to the User. Default is: `Auto-closed for being open too long with no updates.`
 - Auto-Reply: Admin can specify a message to append to the message thread which will Reply to the end-user, can include normal [Email Template Variables](http://osticket.com/wiki/Email_templates#Variables) like CannedResponses or Email Templates (obviously, only those that relate to a ticket work). 
 
+## Screenshot of Admin Screen
+![closer-admin](https://user-images.githubusercontent.com/5077391/29590904-8eb04486-87df-11e7-98f5-27b93621b3b8.png)
+
+
 ### To reset settings
 Simply "Delete" the plugin and add it again, all the configuration will reset from the defaults.
 
