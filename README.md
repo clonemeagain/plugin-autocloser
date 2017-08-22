@@ -2,6 +2,8 @@
 
 Automatically closes tickets that haven't been updated in a while.
 
+## Preview
+![thread-change](https://user-images.githubusercontent.com/5077391/29591027-05d79ea6-87e0-11e7-92d1-694562175b10.png)
 
 
 ## To Install
