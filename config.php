@@ -33,16 +33,21 @@ class CloserPluginConfig extends PluginConfig
     {
         list ($__, $_N) = self::translate();
         
-        // I'm not 100% that closed status id=3 is the same for everyone.
-        // I'll create a select-box so the admin can pick what status to change them to, from the available
-        // statuses. status's.. statusii? stati? statūs? (no, we don't speak Latin), statuses will do.
-        $res = db_query("SELECT id,name FROM " . TICKET_STATUS_TABLE);
-        $statuses = array();
-        while ($row = db_fetch_array($res, MYSQLI_ASSOC)) {
-            $statuses[$row['id']] = $row['name']; // Neatly avoids the language issue.. for this one thing.
+        // I'm not 100% sure that closed status has id 3 for everyone.
+        // Let's just get all available Statuses and show a selectbox:
+        static $statuses = array();
+        // Doesn't appear to be a TicketStatus list that I want to use..
+        if (! $statuses) {
+            foreach (TicketStatus::objects()->values_flat('id', 'name') as $s) {
+                list ($id, $name) = $s;
+                $statuses[$id] = $name;
+            }
         }
         
-        return array(
+        $global_settings = array(
+            'global' => new SectionBreakField(array(
+                'label' => $__('Global Config')
+            )),
             'purge-age' => new TextboxField(array(
                 'default' => '999',
                 'label' => $__('Max open Ticket age in days'),
@@ -59,18 +64,6 @@ class CloserPluginConfig extends PluginConfig
                 'default' => FALSE,
                 'label' => $__('Only close tickets past expiry date'),
                 'hint' => $__('Default ignores expiry')
-            )),
-            'from-status' => new ChoiceField(array(
-                'label' => $__('From Status'),
-                'choices' => $statuses,
-                'default' => 1,
-                'hint' => $__('When we "close" the ticket, what are we changing the status from? Default is "Open"')
-            )),
-            'closed-status' => new ChoiceField(array(
-                'label' => $__('To Status'),
-                'choices' => $statuses,
-                'default' => 3,
-                'hint' => $__('When we "close" the ticket, what are we changing the status to? Default is "Closed"')
             )),
             'purge-frequency' => new ChoiceField(array(
                 'label' => $__('Check Frequency'),
@@ -101,32 +94,91 @@ class CloserPluginConfig extends PluginConfig
                 'hint' => $__("How many old tickets should we close each time? (small for auto-cron)"),
                 'default' => 20
             )),
-            'admin-note' => new TextareaField(array(
-                'label' => $__('Auto-Note'),
-                'hint' => $__('Create\'s an admin note just before closing.'),
-                'default' => 'Auto-closed for being open too long with no updates.',
-                'configuration' => array(
-                    'html' => TRUE,
-                    'size' => 40,
-                    'length' => 256
-                )
-            )),
-            'admin-reply' => new TextareaField(array(
-                'label' => $__('Auto-Reply'),
-                'hint' => $__('Create\'s an admin reply just before closing (can use Ticket Variables).'),
-                'default' => '<p>Hi %{ticket.name.first},
-<br /><br />
-Regarding ticket #%{ticket.number} <a href="%{recipient.ticket_link}">%{ticket.subject}</a>
-<br /><br />
-Please be advised that our support system has closed your ticket due to expiration of an inactivity timer.<br />
-To reopen, please reply at your convenience, if however you consider the matter closed, simply ignore this message and have a lovely day.</p>',
-                'configuration' => array(
-                    'html' => TRUE,
-                    'size' => 40,
-                    'length' => 256
-                )
+            'groups' => new TextboxField(array(
+                'label' => $__('Group Number'),
+                'hint' => $__('Specify how many groups to make, save twice to apply'),
+                'default' => 1
             ))
         
         );
+        
+        // Configure groups to associate a status change with a canned response notification:
+        // How many groups are there?
+        // We have to devolve the ConfigItem's value:
+        $groups = $this->config['groups']->ht['value'] ?: 1;
+        
+        if (! $groups) {
+            $global_settings['error'] = new SectionBreakField(array(
+                'label' => $__('Add groups to associate statuses and canned responses')
+            ));
+            return $global_settings;
+        }
+        
+        // Get all the canned responses to use as selections:
+        $responses = Canned::getCannedResponses();
+        
+        // Build an array of group configurations:
+        $canned_to_status_groups = array();
+        for ($i = 1; $i <= $groups; $i ++) {
+            $gn = $this->get('group-name' . $i);
+            $gn = $gn ? ': ' . $gn : '';
+            $canned_to_status_groups[] = array(
+                'group' . $i => new SectionBreakField(array(
+                    'label' => $__('Group ' . $i . $gn)
+                )),
+                'group-name' . $i => new TextboxField(array(
+                    'label' => 'Groupname',
+                    'hint' => $__('Used to identify this group on this page only')
+                
+                )),
+                'from-status' . $i => new ChoiceField(array(
+                    'label' => $__('From Status'),
+                    'choices' => $statuses,
+                    'default' => 1,
+                    'hint' => $__('When we "close" the ticket, what are we changing the status from? Default is "Open"')
+                )),
+                'closed-status' . $i => new ChoiceField(array(
+                    'label' => $__('To Status'),
+                    'choices' => $statuses,
+                    'default' => 3,
+                    'hint' => $__('When we "close" the ticket, what are we changing the status to? Default is "Closed"')
+                )),
+                
+                'admin-note' . $i => new TextboxField(array(
+                    'label' => $__('Auto-Note'),
+                    'hint' => $__('Create\'s an admin note just before closing.'),
+                    'default' => 'Auto-closed for being open too long with no updates.'
+                )),
+                'admin-reply' . $i => new ChoiceField(array(
+                    'label' => $__('Auto-Reply Canned Response'),
+                    'hint' => $__('Select a canned response to use as a reply just before closing (can use Variables, set this to add another)'),
+                    'choices' => $responses
+                ))
+            
+            );
+        }
+        
+        // Merge all the group configurations after the global settings array and return as our config Options Array:
+        return array_merge($global_settings, ...$canned_to_status_groups);
     }
+
+/**
+ * Customize our form..
+ * a bit.
+ *
+ * function getForm()
+ * {
+ * if (! isset($this->form)) {
+ * $options = array(
+ * 'title' => "Auto-Closer Plugin Configuration",
+ * 'instructions' => 'Testing porpoises only!',
+ * 'template' => dirname(__FILE__) . '/form.tmpl.php'
+ * );
+ * $this->form = new SimpleForm($this->getOptions(), null, $options);
+ * if ($_SERVER['REQUEST_METHOD'] != 'POST')
+ * $this->form->data($this->getInfo());
+ * }
+ * return $this->form;
+ * }
+ */
 }
