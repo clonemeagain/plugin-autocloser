@@ -1,6 +1,7 @@
 <?php
 require_once (INCLUDE_DIR . 'class.plugin.php');
 require_once (INCLUDE_DIR . 'class.signal.php');
+require_once (INCLUDE_DIR . 'class.canned.php');
 require_once ('config.php');
 
 /**
@@ -17,7 +18,7 @@ class CloserPlugin extends Plugin
      *
      * @var boolean
      */
-    const DEBUG = FALSE;
+    const DEBUG = TRUE;
 
     /**
      * Hook the bootstrap process
@@ -42,12 +43,7 @@ class CloserPlugin extends Plugin
             $is_autocron = (isset($data['autocron']) && $data['autocron']);
             
             // Normal cron isn't Autocron:
-            $cli_cron = !$is_autocron;
-            
-            if ($cli_cron) {
-                $this->logans_run_mode();
-                
-            } elseif ($use_autocron && $is_autocron) {
+            if (! $is_autocron || ($use_autocron && $is_autocron)) {
                 $this->logans_run_mode();
             }
         });
@@ -87,97 +83,138 @@ class CloserPlugin extends Plugin
         // If the next run is in the past, then we are overdue, so, lets go!
         if (self::DEBUG || ! $next_run || $now > $next_run) {
             
-            // Find any old tickets that we might need to work on:
-            $open_ticket_ids = $this->findOldTicketIds($config);
-            if (self::DEBUG)
-                error_log("CloserPlugin found " . count($open_ticket_ids));
-            
-            // Bail if there's no work to do
-            if (! count($open_ticket_ids))
-                return;
-            
-            // Fetch the ticket status that indicates the ticket is closed,
-            // or, whatever the admin specified:
-            // It's 3 on mine.. but other languages exist.. so, it might not be
-            // the word "closed" in another language. Use the ID instead:
-            $new_status = TicketStatus::lookup($config->get('closed-status'));
             $sql_now = SqlFunction::NOW();
-            $admin_note = $config->get('admin-note');
-            $admin_reply = $config->get('admin-reply');
             
-            if (self::DEBUG) {
-                print "Found the following details:\nAdmin Note: $admin_note\n\nAdmin Reply: $admin_reply\n";
-            }
+            $max_per_run = (int) $config->get('purge-num');
             
-            // Go through the old tickets, close em:
-            foreach ($open_ticket_ids as $ticket_id) {
+            // Use the numbner of config groups to run the closer as many times as is needed.
+            foreach (range(1, CloserPluginConfig::NUMBER_OF_SETTINGS) as $group_id) {
+                if (! $config->get('group-enabled-' . $group_id)) {
+                    if (self::DEBUG)
+                        error_log("Group $group_id is not enabled.");
+                    continue;
+                } elseif (self::DEBUG) {
+                    error_log("Running group $group_id");
+                }
                 
-                // Fetch the ticket as an Object, let's us call ->save() on it when we're done.
-                $ticket = Ticket::lookup($ticket_id);
-                if ($ticket instanceof Ticket) {
+                // Build an array of settings for this task:
+                // fetch config for finder:
+                $age_days = (int) $config->get('purge-age-' . $group_id);
+                
+                $onlyAnswered = (bool) $config->get('close-only-answered-' . $group_id);
+                $onlyOverdue = (bool) $config->get('close-only-overdue-' . $group_id);
+                
+                if (self::DEBUG)
+                    $group_name = $config->get('group-name-' . $group_id); // for logging
+                $from_status = (int) $config->get('from-status-' . $group_id);
+                $to_status = (int) $config->get('to-status-' . $group_id);
+                
+                // Find tickets that we might need to work on:
+                $open_ticket_ids = $this->findTicketIds($from_status, $age_days, $max_per_run, $onlyAnswered, $onlyOverdue);
+                if (self::DEBUG)
+                    error_log("CloserPlugin group [$group_id] $group_name has " . count($open_ticket_ids) . " open tickets.");
+                
+                // Bail if there's no work to do
+                if (! count($open_ticket_ids))
+                    continue; // Not return, as the next group might have work.
+                              
+                // Gather the resources required to start changing statuses:
+                $new_status = TicketStatus::lookup($to_status);
+                $admin_note = $config->get('admin-note-' . $group_id) ?: FALSE;
+                $admin_reply = ($config->get('admin-reply-' . $group_id)) ? Canned::lookup($config->get('admin-reply-' . $group_id)) : FALSE;
+                
+                if ($admin_reply) {
+                    // Fetch the actual content of the reply:
+                    $admin_reply = $admin_reply->getFormattedResponse('html');
+                }
+                
+                if (self::DEBUG) {
+                    print "Found the following details:\nAdmin Note: $admin_note\n\nAdmin Reply: $admin_reply\n";
+                }
+                
+                // Go through the old tickets, close em:
+                foreach ($open_ticket_ids as $ticket_id) {
                     
-                    // Some tickets aren't closeable.. either because of open tasks, or missing fields.
-                    // we can therefore only work on closeable tickets.
-                    if ($ticket->isCloseable()) {
-                        // We ignore any posting errors, but the functions like to take an array anyway
-                        $errors = array();
+                    // Fetch the ticket as an Object, let's us call ->save() on it when we're done.
+                    $ticket = Ticket::lookup($ticket_id);
+                    if ($ticket instanceof Ticket) {
                         
-                        // Post Note to thread indicating it was closed because it hasn't been updated in X days.
-                        if (strlen($admin_note)) {
-                            $ticket->getThread()->addNote(array(
-                                'note' => $admin_note // Posts Note as SYSTEM, no ticket vars, no email alert
-                            ), $errors);
+                        // Some tickets aren't closeable.. either because of open tasks, or missing fields.
+                        // we can therefore only work on closeable tickets.
+                        if ($ticket->isCloseable()) {
+                            // We ignore any posting errors, but the functions like to take an array anyway
+                            $errors = array();
+                            
+                            // Post Note to thread indicating it was closed because it hasn't been updated in X days.
+                            if ($admin_note) {
+                                $ticket->getThread()->addNote(array(
+                                    'note' => $admin_note // Posts Note as SYSTEM, no ticket vars, no email alert
+                                ), $errors);
+                            }
+                            
+                            // Post Reply to the user, telling them the ticket is closed, relates to issue #2
+                            if ($admin_reply) {
+                                // Replace any ticket variables in the message:
+                                $custom_reply = $ticket->replaceVars($admin_reply, array(
+                                    'recipient' => $ticket->getOwner() // send as the assigned staff.. sneaky
+                                ));
+                                // Send the alert. TRUE flag indicates send the email alert..
+                                $ticket->postReply(array(
+                                    'response' => $custom_reply
+                                ), $errors, TRUE);
+                            }
+                            
+                            $this->closeTicket($ticket, $sql_now, $new_status);
+                            $done ++;
+                        } else {
+                            error_log("Unable to close ticket {$ticket->getSubject()}.");
                         }
-                        
-                        // Post Reply to the user, telling them the ticket is closed, relates to issue #2
-                        if (strlen($admin_reply)) {
-                            // Replace any ticket variables in the message:
-                            $custom_reply = $ticket->replaceVars($admin_reply, array(
-                                'recipient' => $ticket->getOwner() // send as the assigned staff.. sneaky
-                            ));
-                            // Send the alert. TRUE flag indicates send the email alert..
-                            $ticket->postReply(array(
-                                'response' => $custom_reply
-                            ), $errors, TRUE);
-                        }
-                        
-                        if (self::DEBUG)
-                            error_log("Closing ticket {$ticket_id}::{$ticket->getSubject()}");
-                        
-                        // This is the part that actually "Closes" the tickets
-                        //
-                        // Well, depending on the admin settings I mean.
-                        //
-                        // Could use $ticket->setStatus($closed_status) function
-                        // however, this gives us control over _how_ it is closed.
-                        // preventing accidentally making any logged-in staff
-                        // associated with the closure, which is an issue with AutoCron
-                        
-                        // Start by setting the last update and closed timestamps to now
-                        $ticket->closed = $ticket->lastupdate = $sql_now;
-                        
-                        // Remove any duedate or overdue flags
-                        $ticket->duedate = null;
-                        $ticket->clearOverdue(FALSE); // flag prevents saving, we'll do that
-                                                      
-                        // Post an Event with the current timestamp.
-                        $ticket->logEvent($new_status->getState(), array(
-                            'status' => array(
-                                $new_status->getId(),
-                                $new_status->getName()
-                            )
-                        ));
-                        // Actually apply the new "TicketStatus" to the Ticket.
-                        $ticket->status = $new_status;
-                        
-                        // Save it, flag prevents it refetching the ticket data straight away (inefficient)
-                        $ticket->save(FALSE);
                     } else {
-                        error_log("Unable to close ticket {$ticket->getSubject()}, check it manually: id# {$ticket_id}");
+                        error_log("ticket $ticket_id is not instatiable. :-(");
                     }
                 }
             }
         }
+    }
+
+    /**
+     * This is the part that actually "Closes" the tickets
+     *
+     * Well, depending on the admin settings I mean.
+     *
+     * Could use $ticket->setStatus($closed_status) function
+     * however, this gives us control over _how_ it is closed.
+     * preventing accidentally making any logged-in staff
+     * associated with the closure, which is an issue with AutoCron
+     *
+     * @param Ticket $ticket
+     * @param SqlFunction $sql_now
+     * @param TicketStatus $new_status
+     */
+    private function closeTicket($ticket, $sql_now, $new_status)
+    {
+        if (self::DEBUG)
+            error_log("Setting status " . $new_status->getState() . " for ticket {$ticket->getId()}::{$ticket->getSubject()}");
+        
+        // Start by setting the last update and closed timestamps to now
+        $ticket->closed = $ticket->lastupdate = $sql_now;
+        
+        // Remove any duedate or overdue flags
+        $ticket->duedate = null;
+        $ticket->clearOverdue(FALSE); // flag prevents saving, we'll do that
+                                      
+        // Post an Event with the current timestamp.
+        $ticket->logEvent($new_status->getState(), array(
+            'status' => array(
+                $new_status->getId(),
+                $new_status->getName()
+            )
+        ));
+        // Actually apply the new "TicketStatus" to the Ticket.
+        $ticket->status = $new_status;
+        
+        // Save it, flag prevents it refetching the ticket data straight away (inefficient)
+        $ticket->save(FALSE);
     }
 
     /**
@@ -187,6 +224,8 @@ class CloserPlugin extends Plugin
      *
      * Could be made static so other classes can find old tickets..
      *
+     * @param int $from_status
+     *            the id of the status to select tickets from
      * @param int $age_days
      *            admin configuration max-age for an un-updated ticket.
      * @param int $max
@@ -198,27 +237,24 @@ class CloserPlugin extends Plugin
      * @return array of integers that are Ticket::lookup compatible ID's of Open Tickets
      * @throws Exception so you have something interesting to read in your cron logs..
      */
-    private function findOldTicketIds($config)
+    private function findTicketIds($from_status, $age_days, $max, $onlyAnswered = FALSE, $onlyOverdue = FALSE)
     {
-        // fetch config for finder:
-        $age_days = (int) $config->get('purge-age');
-        $max = (int) $config->get('purge-num');
-        $onlyAnswered = (bool) $config->get('close-only-answered');
-        $onlyOverdue = (bool) $config->get('close-only-overdue');
-        $from_status = (int) $config->get('from-status');
+        if (! $from_status)
+            throw new \Exception("Invalid parameter (int) from_status needs to be >0");
+        
+        if ($age_days < 1)
+            throw new \Exception("Invalid parameter (int) age_days needs to be > 0");
+        
+        if ($max < 1)
+            throw new \Exception("Invalid parameter (int) max needs to be > 0");
         
         $whereFilter = '';
         
-        if ($onlyAnswered) {
+        if ($onlyAnswered)
             $whereFilter .= ' AND isanswered=1';
-        }
         
-        if ($onlyOverdue) {
+        if ($onlyOverdue)
             $whereFilter .= ' AND isoverdue=1';
-        }
-        
-        if (! $age_days || ! is_numeric($age_days))
-            throw new Exception("No max age specified, or [$age_days] can't be used as a number.");
         
         // Ticket query, note MySQL is doing all the date maths:
         // Sidebar: Why haven't we moved to PDO yet?
@@ -230,7 +266,7 @@ ORDER BY ticket_id ASC
 LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
         
         if (self::DEBUG)
-            error_log("Looking for old tickets with query: $sql");
+            error_log("Looking for tickets with query: $sql");
         
         $r = db_query($sql);
         
