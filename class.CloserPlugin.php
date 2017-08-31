@@ -140,14 +140,14 @@ class CloserPlugin extends Plugin
                         // Some tickets aren't closeable.. either because of open tasks, or missing fields.
                         // we can therefore only work on closeable tickets.
                         if (! $ticket->isCloseable()) {
-                            $ticket->LogNote(__('Error auto-changing status'), __('Unable to change this ticket\'s status to ' . $new_status->getState()), 'SYSTEM', FALSE);
+                            $ticket->LogNote(__('Error auto-changing status'), __('Unable to change this ticket\'s status to ' . $new_status->getState()), 'AutoCloser Plugin', FALSE);
                             continue;
                         }
                         
                         // Add a Note to the thread indicating it was closed by us
                         if ($admin_note)
-                            $ticket->LogNote(__('Changing status to: ' . $new_status->getState()), $admin_note, 'SYSTEM', FALSE); // Posts Note as SYSTEM with no email alert
-                                                                                                                                  
+                            $ticket->LogNote(__('Changing status to: ' . $new_status->getState()), $admin_note, 'AutoCloser Plugin', FALSE); // Posts Note as AutoCloser Plugin with no email alert
+                                                                                                                                             
                         // Post Reply to the user, telling them the ticket is closed, relates to issue #2
                         if ($admin_reply)
                             $this->postReply($ticket, $new_status, $admin_reply);
@@ -275,25 +275,34 @@ LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
      */
     function postReply($ticket, $new_status, $admin_reply)
     {
-        $robot = $this->getConfig()->get('robot-account');
+        // We can re-use the robot to send notifications for multiple tickets
+        // no point rebuilding the object for each one.
+        static $robot;
+        if (! isset($robot)) {
+            $robot = $this->getConfig()->get('robot-account');
+            if ($robot)
+                $robot = Staff::lookup($robot);
+        }
         
-        // Override some assumptions about who is a staff..
+        // Override some assumptions about who is staff..
         // cron calls are generally offline, so this won't matter
         // also, autocron happens after, not during an interactive users
         // actions, so, this shouldn't break things.. right?
         global $thisstaff;
         
         // What if nobody is assigned to the ticket? Do we still want to close it?
-        if (! $robot) {
-            $assignee = $ticket->getAssignee();
-            if ($assignee instanceof Team)
-                // pick someone from that team to be our patsy:
-                $assignee = $assignee->getMembers()[0];
+        // If the admin has selected "ONLY send as Ticket's assigned staff", then
+        // do that.
+        if ($robot) {
+            // Use the robot account the admin selected.
+            $assignee = $robot;
         } else {
-            
-            // There isn't anyone.. let's use the robot account:
-            if (! $assignee)
-                $assignee = Staff::lookup($robot);
+            $assignee = $ticket->getAssignee();
+            if (! $assignee instanceof Staff) {
+                // well poo
+                // now what do?
+                $ticket->logNote(__('AutoCloser Error'), __('Unable to send reply, no assigned Agent on ticket, and no Robot account specified in config.'), 'AutoCloser Plugin', FALSE);
+            }
         }
         
         // Make osTicket think our patsy is actually logged in:
@@ -306,24 +315,23 @@ LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
         ));
         
         // Build an array of values to send to the ticket's postReply function
+        // Actually, with the $assignee/$robot as $thisstaff above, we don't need most of this
         $vars = array(
-            'poster' => $assignee, // our patsy from above
-            'staffId' => $assignee->getId(),
-            'response' => $custom_reply, // the "response" is our text after replacing any vars
-            'signature' => 'dept', // Set the department signature, if available
-            'emailcollab' => FALSE // don't send notification to all collaborators.. maybe.. dunno.
+            // 'poster' => $assignee, // our patsy from above
+            // 'staffId' => $assignee->getId(),
+            'response' => $custom_reply // the "response" is our text after replacing any vars
+                                            // 'signature' => 'dept', // Set the department signature, if available
+                                            // 'emailcollab' => FALSE // don't send notification to all collaborators.. maybe.. dunno.
         );
         
         // We ignore any posting errors, but it takes an array anyway
         $errors = array();
         
         // Send the alert without claiming the ticket on our assignee's behalf.
-        $sent = $ticket->postReply($vars, $errors, TRUE, FALSE);
-        
-        if (! $sent)
+        if (! $sent = $ticket->postReply($vars, $errors, TRUE, FALSE))
             // doh, the message didn't work.
             // we still have to change the status though, so, we'll just post another logNote warning of the error:
-            $ticket->LogNote(__('Error Notification'), __('We were unable to post a reply to the ticket creator.'), 'SYSTEM', FALSE);
+            $ticket->LogNote(__('Error Notification'), __('We were unable to post a reply to the ticket creator.'), 'AutoCloser Plugin', FALSE);
     }
 
     /**

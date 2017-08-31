@@ -53,6 +53,7 @@ class CloserPluginConfig extends PluginConfig
                 list ($id, $name) = $s;
                 $statuses[$id] = $name;
             }
+            $staff[0] = $__('ONLY Send as Ticket\'s Assigned Staff');
             foreach (Staff::objects() as $s) {
                 $staff[$s->getId()] = $s->getName();
             }
@@ -93,10 +94,10 @@ class CloserPluginConfig extends PluginConfig
                 'default' => 20
             )),
             'robot-account' => new ChoiceField(array(
-                'label' => $__('Staff Account'),
+                'label' => $__('Robot Account'),
                 'choices' => $staff,
                 'default' => 0,
-                'hint' => $__('Select staff member who will be sending replies, account can be locked, still works.')
+                'hint' => $__('Select account for sending replies, account can be locked, still works.')
             ))
         );
         
