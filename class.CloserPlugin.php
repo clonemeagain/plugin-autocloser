@@ -315,7 +315,7 @@ LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max );
 				'lastresponse' => 'fetchLastResponse,' 
 		);
 		// See if they've been used, if so, call the function
-		foreach ( $optionptions as $option => $method ) {
+		foreach ( $options as $option => $method ) {
 			if (strpos ( $admin_reply, $option ) !== FALSE) {
 				$variables [$option] = call_user_func ( array (
 						$this,
