@@ -74,7 +74,7 @@ class CloserPluginConfig extends PluginConfig
             )),
             'purge-num' => new TextboxField(array(
                 'label' => $__('Tickets to close per run per group'),
-                'hint' => $__("How many tickets should we close each time? (small for auto-cron)"),
+                'hint' => $__("How many tickets should we close each time for each group? (small for auto-cron)"),
                 'default' => 20
             ))
         );
