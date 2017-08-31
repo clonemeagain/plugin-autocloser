@@ -43,6 +43,21 @@ class CloserPluginConfig extends PluginConfig
     {
         list ($__, $_N) = self::translate();
         
+        // I'm not 100% sure that closed status has id 3 for everyone.
+        // Let's just get all available Statuses and show a selectbox:
+        static $staff, $statuses = array();
+        
+        // Doesn't appear to be a TicketStatus list that I want to use..
+        if (! $statuses) {
+            foreach (TicketStatus::objects()->values_flat('id', 'name') as $s) {
+                list ($id, $name) = $s;
+                $statuses[$id] = $name;
+            }
+            foreach (Staff::objects() as $s) {
+                $staff[$s->getId()] = $s->getName();
+            }
+        }
+        
         $global_settings = array(
             'global' => new SectionBreakField(array(
                 'label' => $__('Global Config')
@@ -76,19 +91,14 @@ class CloserPluginConfig extends PluginConfig
                 'label' => $__('Tickets to close per run per group'),
                 'hint' => $__("How many tickets should we close each time for each group? (small for auto-cron)"),
                 'default' => 20
+            )),
+            'robot-account' => new ChoiceField(array(
+                'label' => $__('Staff Account'),
+                'choices' => $staff,
+                'default' => 0,
+                'hint' => $__('Select staff member who will be sending replies, account can be locked, still works.')
             ))
         );
-        
-        // I'm not 100% sure that closed status has id 3 for everyone.
-        // Let's just get all available Statuses and show a selectbox:
-        static $statuses = array();
-        // Doesn't appear to be a TicketStatus list that I want to use..
-        if (! $statuses) {
-            foreach (TicketStatus::objects()->values_flat('id', 'name') as $s) {
-                list ($id, $name) = $s;
-                $statuses[$id] = $name;
-            }
-        }
         
         // Configure groups to associate a status change with a canned response notification:
         // Get all the canned responses to use as selections:
@@ -97,7 +107,7 @@ class CloserPluginConfig extends PluginConfig
         // Build an array of group configurations:
         $canned_to_status_groups = array();
         foreach (range(1, self::NUMBER_OF_SETTINGS) as $i) {
-            $gn = $this->get('group-name' . $i);
+            $gn = $this->get('group-name-' . $i);
             $gn = $gn ? ': ' . $gn : '';
             $canned_to_status_groups[] = array(
                 'group' . $i => new SectionBreakField(array(

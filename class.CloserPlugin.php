@@ -93,97 +93,72 @@ class CloserPlugin extends Plugin
                     error_log("Running group $group_id");
                 }
                 
-                // Build an array of settings for this task:
-                // fetch config for finder:
-                $age_days = (int) $config->get('purge-age-' . $group_id);
-                $onlyAnswered = (bool) $config->get('close-only-answered-' . $group_id);
-                $onlyOverdue = (bool) $config->get('close-only-overdue-' . $group_id);
-                
-                if (self::DEBUG)
-                    $group_name = $config->get('group-name-' . $group_id); // for logging
-                $from_status = (int) $config->get('from-status-' . $group_id);
-                $to_status = (int) $config->get('to-status-' . $group_id);
-                
-                // Find tickets that we might need to work on:
-                $open_ticket_ids = $this->findTicketIds($from_status, $age_days, $max_per_run, $onlyAnswered, $onlyOverdue);
-                if (self::DEBUG)
-                    error_log("CloserPlugin group [$group_id] $group_name has " . count($open_ticket_ids) . " open tickets.");
-                
-                // Bail if there's no work to do
-                if (! count($open_ticket_ids))
-                    continue; // Not return, as the next group might have work.
-                              
-                // Gather the resources required to start changing statuses:
-                $new_status = TicketStatus::lookup($to_status);
-                $admin_note = $config->get('admin-note-' . $group_id) ?: FALSE;
-                $admin_reply = ($config->get('admin-reply-' . $group_id)) ? Canned::lookup($config->get('admin-reply-' . $group_id)) : FALSE;
-                
-                if ($admin_reply)
-                    // Fetch the actual content of the reply:
-                    $admin_reply = $admin_reply->getFormattedResponse('html');
-                
-                if (self::DEBUG)
-                    print "Found the following details:\nAdmin Note: $admin_note\n\nAdmin Reply: $admin_reply\n";
-                
-                // Go through the tickets:
-                foreach ($open_ticket_ids as $ticket_id) {
+                try {
                     
-                    // Fetch the ticket as an Object
-                    $ticket = Ticket::lookup($ticket_id);
-                    if (!$ticket instanceof Ticket) {
-                        error_log("ticket $ticket_id is not instatiable. :-(");
-                        continue;
-                    }
+                    // Build an array of settings for this task:
+                    // fetch config for finder:
+                    $age_days = (int) $config->get('purge-age-' . $group_id);
+                    $onlyAnswered = (bool) $config->get('close-only-answered-' . $group_id);
+                    $onlyOverdue = (bool) $config->get('close-only-overdue-' . $group_id);
                     
-                    // Some tickets aren't closeable.. either because of open tasks, or missing fields.
-                    // we can therefore only work on closeable tickets.
-                    if (! $ticket->isCloseable()) {
-                        $ticket->LogNote(__('Error auto-changing status'), __('Unable to change this ticket\'s status to ' . $new_status->getState()), 'SYSTEM', FALSE);
-                        continue;
-                    }
-                    // We ignore any posting errors, but the functions like to take an array anyway
-                    $errors = array();
+                    if (self::DEBUG)
+                        $group_name = $config->get('group-name-' . $group_id); // for logging
+                    $from_status = (int) $config->get('from-status-' . $group_id);
+                    $to_status = (int) $config->get('to-status-' . $group_id);
                     
-                    // Add a Note to thread indicating it was closed because it hasn't been updated in X days.
-                    if ($admin_note)
-                        $ticket->LogNote($new_status->getState(), $admin_note, 'SYSTEM', FALSE); // Posts Note as SYSTEM, no ticket vars, no email alert
-                                                                                                 
-                    // Post Reply to the user, telling them the ticket is closed, relates to issue #2
-                    if ($admin_reply) {
-                        // What if nobody is assigned to the ticket? Do we still want to close it?
-                        $assignee = $ticket->getAssignee();
-                        if ($assignee instanceof Team) {
-                            // pick someone from that team to be our patsy:
-                            $assignee = $assignee->getMembers()[0];
-                        }
-                        // Override some assumptions about who is a staff..
-                        // cron calls are generally offline, so this won't matter
-                        // also, autocron happens after, not during an interactive users
-                        // actions, so, this shouldn't break things.. right?
-                        global $thisstaff;
-                        $thisstaff = $assignee;
+                    // Find tickets that we might need to work on:
+                    $open_ticket_ids = $this->findTicketIds($from_status, $age_days, $max_per_run, $onlyAnswered, $onlyOverdue);
+                    if (self::DEBUG)
+                        error_log("CloserPlugin group [$group_id] $group_name has " . count($open_ticket_ids) . " open tickets.");
+                    
+                    // Bail if there's no work to do
+                    if (! count($open_ticket_ids))
+                        continue; // Not return, as the next group might have work.
+                                  
+                    // Gather the resources required to start changing statuses:
+                    $new_status = TicketStatus::lookup($to_status);
+                    $admin_note = $config->get('admin-note-' . $group_id) ?: FALSE;
+                    $admin_reply = ($config->get('admin-reply-' . $group_id)) ? Canned::lookup($config->get('admin-reply-' . $group_id)) : FALSE;
+                    
+                    if ($admin_reply)
+                        // Fetch the actual content of the reply:
+                        $admin_reply = $admin_reply->getFormattedResponse('html');
+                    
+                    if (self::DEBUG)
+                        print "Found the following details:\nAdmin Note: $admin_note\n\nAdmin Reply: $admin_reply\n";
+                    
+                    // Go through the tickets:
+                    foreach ($open_ticket_ids as $ticket_id) {
                         
-                        // Replace any ticket variables in the message:
-                        $custom_reply = $ticket->replaceVars($admin_reply, array(
-                            'recipient' => $ticket->getOwner() // send as the assigned staff.. sneaky
-                        ));
-                        // Send the alert. TRUE flag indicates send the email alert.. FALSE indicates don't claim the ticket for the Agent
-                        $worked = $ticket->postReply(array(
-                            'poster' => $assignee,
-                            'staffId' => $assignee->getId(),
-                            'response' => $custom_reply,
-                            'signature' => 'dept',
-                            'emailcollab' => FALSE // don't send notification to all collaborators.. maybe.. dunno.
-                        ), $errors, TRUE, FALSE);
-                        if (! $worked) {
-                            // doh, the message didn't work.
-                            // we still have to change the status though, so, we'll just post another logNote warning of the error:
-                            $ticket->LogNote(__('Error Notification'), __('We were unable to post a reply to the ticket creator.'), 'SYSTEM', FALSE);
+                        // Fetch the ticket as an Object
+                        $ticket = Ticket::lookup($ticket_id);
+                        if (! $ticket instanceof Ticket) {
+                            error_log("Ticket $ticket_id is not instatiable. :-(");
+                            continue;
                         }
+                        
+                        // Some tickets aren't closeable.. either because of open tasks, or missing fields.
+                        // we can therefore only work on closeable tickets.
+                        if (! $ticket->isCloseable()) {
+                            $ticket->LogNote(__('Error auto-changing status'), __('Unable to change this ticket\'s status to ' . $new_status->getState()), 'SYSTEM', FALSE);
+                            continue;
+                        }
+                        
+                        // Add a Note to the thread indicating it was closed by us
+                        if ($admin_note)
+                            $ticket->LogNote(__('Changing status to: ' . $new_status->getState()), $admin_note, 'SYSTEM', FALSE); // Posts Note as SYSTEM with no email alert
+                                                                                                                                  
+                        // Post Reply to the user, telling them the ticket is closed, relates to issue #2
+                        if ($admin_reply)
+                            $this->postReply($ticket, $new_status, $admin_reply);
+                        
+                        $this->changeTicketStatus($ticket, $new_status);
+                        $done ++;
                     }
-                    
-                    $this->changeTicketStatus($ticket, $new_status);
-                    $done ++;
+                } catch (Exception $e) {
+                    // Well, something borked
+                    error_log("Exception encountered, we'll soldier on, but something is broken!");
+                    error_log($e->getMessage());
                 }
             }
         }
@@ -251,7 +226,7 @@ class CloserPlugin extends Plugin
     private function findTicketIds($from_status, $age_days, $max, $onlyAnswered = FALSE, $onlyOverdue = FALSE)
     {
         if (! $from_status)
-            throw new \Exception("Invalid parameter (int) from_status needs to be >0");
+            throw new \Exception("Invalid parameter (int) from_status needs to be > 0");
         
         if ($age_days < 1)
             throw new \Exception("Invalid parameter (int) age_days needs to be > 0");
@@ -287,6 +262,68 @@ LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
             $ids[] = $i['ticket_id'];
         
         return $ids;
+    }
+
+    /**
+     * Sends a reply to the ticket creator
+     *
+     * Wrapper/customizer around the Ticket::postReply method.
+     *
+     * @param Ticket $ticket
+     * @param TicketStatus $new_status
+     * @param string $admin_reply
+     */
+    function postReply($ticket, $new_status, $admin_reply)
+    {
+        $robot = $this->getConfig()->get('robot-account');
+        
+        // Override some assumptions about who is a staff..
+        // cron calls are generally offline, so this won't matter
+        // also, autocron happens after, not during an interactive users
+        // actions, so, this shouldn't break things.. right?
+        global $thisstaff;
+        
+        // What if nobody is assigned to the ticket? Do we still want to close it?
+        if (! $robot) {
+            $assignee = $ticket->getAssignee();
+            if ($assignee instanceof Team)
+                // pick someone from that team to be our patsy:
+                $assignee = $assignee->getMembers()[0];
+        } else {
+            
+            // There isn't anyone.. let's use the robot account:
+            if (! $assignee)
+                $assignee = Staff::lookup($robot);
+        }
+        
+        // Make osTicket think our patsy is actually logged in:
+        // This actually bypasses any authentication/validation checks..
+        $thisstaff = $assignee;
+        
+        // Replace any ticket variables in the message:
+        $custom_reply = $ticket->replaceVars($admin_reply, array(
+            'recipient' => $ticket->getOwner() // Only send to the original ticket creator.
+        ));
+        
+        // Build an array of values to send to the ticket's postReply function
+        $vars = array(
+            'poster' => $assignee, // our patsy from above
+            'staffId' => $assignee->getId(),
+            'response' => $custom_reply, // the "response" is our text after replacing any vars
+            'signature' => 'dept', // Set the department signature, if available
+            'emailcollab' => FALSE // don't send notification to all collaborators.. maybe.. dunno.
+        );
+        
+        // We ignore any posting errors, but it takes an array anyway
+        $errors = array();
+        
+        // Send the alert without claiming the ticket on our assignee's behalf.
+        $sent = $ticket->postReply($vars, $errors, TRUE, FALSE);
+        
+        if (! $sent)
+            // doh, the message didn't work.
+            // we still have to change the status though, so, we'll just post another logNote warning of the error:
+            $ticket->LogNote(__('Error Notification'), __('We were unable to post a reply to the ticket creator.'), 'SYSTEM', FALSE);
     }
 
     /**
