@@ -355,7 +355,7 @@ LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max );
 		$all_responses = $ticket->getThreadEntries ( 'R' );
 		$response = reset ( $all_responses );
 		if ($response instanceof ResponseThreadEntry)
-			return $esponser->getBody ();
+			return $response->getBody ();
 	}
 	
 	/**
