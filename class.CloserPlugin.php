@@ -295,6 +295,7 @@ LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max );
 				// well poo
 				// now what do?
 				$ticket->logNote ( __ ( 'AutoCloser Error' ), __ ( 'Unable to send reply, no assigned Agent on ticket, and no Robot account specified in config.' ), 'AutoCloser Plugin', FALSE );
+				return;
 			}
 		}
 		
