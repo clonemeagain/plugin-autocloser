@@ -54,13 +54,13 @@ class CloserPluginConfig extends PluginConfig {
 				$staff [$s->getId ()] = $s->getName ();
 			}
 		}
-		
+
 		$global_settings = array (
 				'global' => new SectionBreakField ( array (
-						'label' => $__ ( 'Global Config' ) 
+						'label' => $__ ( 'Global Config' ),
 				) ),
 				
-				'purge-frequency' => new ChoiceField ( array (
+				'frequency' => new ChoiceField ( array (
 						'label' => $__ ( 'Check Frequency' ),
 						'choices' => array (
 								'0' => $__ ( 'Every Cron' ),
@@ -94,9 +94,8 @@ class CloserPluginConfig extends PluginConfig {
 						'choices' => $staff,
 						'default' => 0,
 						'hint' => $__ ( 'Select account for sending replies, account can be locked, still works.' ) 
-				) ),
-		)
-		;
+				) ) 
+		);
 		
 		// Configure groups to associate a status change with a canned response notification:
 		// Get all the canned responses to use as selections:
