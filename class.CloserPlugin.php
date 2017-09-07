@@ -14,8 +14,9 @@ foreach (array(
   'ticket',
   'signal',
   'staff'
-) as $c)
+) as $c) {
   require_once INCLUDE_DIR . "class.$c.php";
+}
 require_once 'config.php';
 
 /**
@@ -286,8 +287,7 @@ SELECT ticket_id
 FROM %s WHERE lastupdate < DATE_SUB(NOW(), INTERVAL %d DAY)
 AND status_id=%d %s
 ORDER BY ticket_id ASC
-LIMIT %d",
-      TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
+LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
     
     if (self::DEBUG) {
       error_log("Looking for tickets with query: $sql");
