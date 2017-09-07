@@ -21,15 +21,15 @@ Automatically closes tickets that haven't been updated in a while.
 
 Visit the Admin-panel, select Manage => Plugins, choose the `Ticket Closer` plugin. 
 
-- Check Frequency: Drop down selector for how often you want the plugin to check the for old tickets? Default is every 2 hours, can be set to run every time cron is run, or once a year.. [Open an issue](https://github.com/clonemeagain/plugin-autocloser/issues/new) for more options if required. 
+- Check Frequency: Drop down selector for how often you want the plugin to check the tickets? Default is every 2 hours, can be set to run every time cron is run, or once a year.. [Open an issue](https://github.com/clonemeagain/plugin-autocloser/issues/new) for more options if required. 
 - Use Autocron: A checkbox to enable checking via Autocron, (default unchecked). If you don't have a cron config 
 - Tickets to close per run per group: How many tickets could we close if we are to close old open tickets? The maximum per run per group basically. If you enter 5, then every "Check Frequency" the plugin will attempt to close up to 5 open tickets that have had no activity for Max open Ticket age, for every enabled group.
-- Robot Account: Default is "ONLY Send as Ticket's Assinged Staff", if there isn't an assigned staff, an error message will be posted to the thread as a Note (not visible to User). However, the real fun begins when you pick someone to act as the Robot. You can create an agent account with any name/settings you like, even disable it, and then select it from this list to act on your behalf as the ticket-closer. If you don't select someone, it will send and close as if the assigned staff member did it. If a ticket is assigned to a team not an agent, it treats it like nobody is assigned.
+- Robot Account: Default is "ONLY Send as Ticket's Assigned Agent", if there isn't an assigned agent, an error message will be posted to the thread as a Note (not visible to User). However, the real fun begins when you pick someone to act as the Robot. You can create an agent account with any name/settings you like, even disable it, and then select it from this list to act on your behalf as the ticket-closer. If you don't select someone, it will send and close as if the assigned staff member did it. If a ticket is assigned to a team not an agent, it treats it like nobody is assigned.
 
-### Explanation of Groups
+### Explanation of Setting Groups
 
 Because you have many ticket status's, why wouldn't you want to be able to change from a status to another status multiple times? Well, maybe you do! :-)
-This has a predefined limit of 4 groups, however, with minor tweaking (before installing) you can set it as high as you like. If you change it after installing, be warned, it will completely mess up the plugin config. Nothing I can do about that, tryer beware. Heck, maybe it works, and it only broke things because I was doing it dynamically? 
+This has a defined limit of 4 setting groups, however, with minor tweaking (before installing) you can set it as high as you like. If you change it after installing, be warned, it will completely mess up the plugin config. Nothing I can do about that, tryer beware.
 
 To change the number of groups, open the plugin directory, find the file `config.php` then change the following line near the top:
 
@@ -37,9 +37,11 @@ To change the number of groups, open the plugin directory, find the file `config
 const NUMBER_OF_SETTINGS = 4;
 ```
 
-### Group Settings:
+The only real problem with cranking it up high, is that it will increase the amount of time the admin page takes to load.. also, you have to scroll passed all of them to get to the save button. So, only set it as high as you need. 
 
-Each of the groups has their own "group" of settings. 
+### Each Setting Group:
+
+You can associate a status change with a Canned Reply, (or no reply), giving you control over many status changes automatically.
 
 
 - Enable Group: Tick this to enable the settings group, default is only the first group is enabled. 

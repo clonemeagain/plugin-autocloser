@@ -1,6 +1,13 @@
 <?php
+/**
+ * @file class.CloserPlugin.php :: Requires PHP5.6+
+ *
+ * @author Grizly <clonemeagain@gmail.com>
+ * @see https://github.com/clonemeagain/plugin-autocloser
+ */
 foreach (array(
   'canned',
+  'format',
   'list',
   'orm',
   'plugin',
@@ -24,7 +31,14 @@ class CloserPlugin extends Plugin {
    *
    * @var boolean
    */
-  const DEBUG = TRUE;
+  const DEBUG = FALSE;
+
+  /**
+   * The name that appears in threads as: Closer Plugin.
+   *
+   * @var string
+   */
+  const PLUGIN_NAME = 'Closer Plugin';
 
   /**
    * Hook the bootstrap process Run on every instantiation, so needs to be
@@ -63,21 +77,24 @@ class CloserPlugin extends Plugin {
     if ($this->is_time_to_run($config)) {
       // Use the number of config groups to run the closer as many times as is needed.
       foreach (range(1, CloserPluginConfig::NUMBER_OF_SETTINGS) as $group_id) {
-        if (! $config->get('group-enabled-' . $group_id))
+        if (! $config->get('group-enabled-' . $group_id)) {
           continue;
+        }
         
         try {
           $open_ticket_ids = $this->find_ticket_ids($config, $group_id);
-          if (self::DEBUG)
+          if (self::DEBUG) {
             error_log(
               "CloserPlugin group [$group_id] $group_name has " .
                  count($open_ticket_ids) . " open tickets.");
+          }
           
-          // Bail if there's no work to do
-          if (! count($open_ticket_ids))
+          // Bail if there is no work to do
+          if (! count($open_ticket_ids)) {
             continue;
+          }
           
-          // Gather the resources required to start changing statuses:
+          // Find the new TicketStatus from the Setting Group config:
           $new_status = TicketStatus::lookup(
             array(
               'id' => (int) $config->get('to-status-' . $group_id)
@@ -86,49 +103,58 @@ class CloserPlugin extends Plugin {
           // Admin note is just text
           $admin_note = $config->get('admin-note-' . $group_id) ?: FALSE;
           
-          // Fetch the actual content of the reply text.html == with images, don't think it works with attachments.
+          // Fetch the actual content of the reply, "html" means load with images, 
+          // I don't think it works with attachments though.
           $admin_reply = $config->get('admin-reply-' . $group_id);
-          if ($admin_reply) {
+          if (is_numeric($admin_reply) && $admin_reply) {
+            // We have a valid Canned_Response ID, fetch the actual Canned:
             $admin_reply = Canned::lookup($admin_reply);
             if ($admin_reply instanceof Canned) {
+              // Got a real Canned object, let's pull the body/string:
               $admin_reply = $admin_reply->getFormattedResponse('html');
             }
           }
           
-          if (self::DEBUG)
+          if (self::DEBUG) {
             print 
               "Found the following details:\nAdmin Note: $admin_note\n\nAdmin Reply: $admin_reply\n";
+          }
           
-          // Go through the tickets:
+          // Go through each ticket ID:
           foreach ($open_ticket_ids as $ticket_id) {
             
-            // Fetch the ticket as an Object
+            // Fetch ticket as an Object
             $ticket = Ticket::lookup($ticket_id);
             if (! $ticket instanceof Ticket) {
-              error_log("Ticket $ticket_id is not instatiable. :-(");
+              error_log("Ticket $ticket_id was not instatiable. :-(");
               continue;
             }
             
             // Some tickets aren't closeable.. either because of open tasks, or missing fields.
             // we can therefore only work on closeable tickets.
+            // This won't close it, nor will it send a response, so it will likely trigger again
+            // on the next run.. TRUE means send an alert.
             if (! $ticket->isCloseable()) {
               $ticket->LogNote(__('Error auto-changing status'),
                 __(
                   'Unable to change this ticket\'s status to ' .
-                     $new_status->getState()), get_class(), FALSE);
+                     $new_status->getState()), self::PLUGIN_NAME, TRUE);
               continue;
             }
             
-            // Add a Note to the thread indicating it was closed by us
-            if ($admin_note)
+            // Add a Note to the thread indicating it was closed by us, don't send an alert.
+            if ($admin_note) {
               $ticket->LogNote(
                 __('Changing status to: ' . $new_status->getState()), $admin_note,
-                get_class(), FALSE); // FALSE == no email alert
+                self::PLUGIN_NAME, FALSE);
+            }
             
-            // Post Reply to the user, telling them the ticket is closed, relates to issue #2
-            if ($admin_reply)
+            // Post a Reply to the user, telling them the ticket is closed, relates to issue #2
+            if ($admin_reply) {
               $this->post_reply($ticket, $new_status, $admin_reply);
+            }
             
+            // Actually change the ticket status
             $this->change_ticket_status($ticket, $new_status);
           }
         } catch (Exception $e) {
@@ -136,7 +162,8 @@ class CloserPlugin extends Plugin {
           error_log(
             "Exception encountered, we'll soldier on, but something is broken!");
           error_log($e->getMessage());
-          print_r($e->getTrace());
+          if (self::DEBUG)
+            print_r($e->getTrace());
         }
       }
     }
@@ -170,8 +197,9 @@ class CloserPlugin extends Plugin {
     // Always run when in DEBUG mode.. because waiting for the scheduler is slow
     // If we don't have a next_run, it's because we want it to run
     // If the next run is in the past, then we are overdue, so, lets go!
-    if (self::DEBUG || ! $next_run || $now > $next_run)
+    if (self::DEBUG || ! $next_run || $now > $next_run) {
       return TRUE;
+    }
     return FALSE;
   }
 
@@ -186,10 +214,11 @@ class CloserPlugin extends Plugin {
    * @param TicketStatus $new_status
    */
   private function change_ticket_status(Ticket $ticket, TicketStatus $new_status) {
-    if (self::DEBUG)
+    if (self::DEBUG) {
       error_log(
         "Setting status " . $new_status->getState() .
            " for ticket {$ticket->getId()}::{$ticket->getSubject()}");
+    }
     
     // Start by setting the last update and closed timestamps to now
     $ticket->closed = $ticket->lastupdate = SqlFunction::NOW();
@@ -200,12 +229,12 @@ class CloserPlugin extends Plugin {
     
     // Post an Event with the current timestamp.
     $ticket->logEvent($new_status->getState(),
-      array(
-        'status' => array(
+      [
+        'status' => [
           $new_status->getId(),
           $new_status->getName()
-        )
-      ));
+        ]
+      ]);
     // Actually apply the new "TicketStatus" to the Ticket.
     $ticket->status = $new_status;
     
@@ -225,16 +254,19 @@ class CloserPlugin extends Plugin {
    */
   private function find_ticket_ids(PluginConfig $config, $group_id) {
     $from_status = (int) $config->get('from-status-' . $group_id);
-    if (! $from_status)
+    if (! $from_status) {
       throw new \Exception("Invalid parameter (int) from_status needs to be > 0");
+    }
     
     $age_days = (int) $config->get('purge-age-' . $group_id);
-    if ($age_days < 1)
+    if ($age_days < 1) {
       throw new \Exception("Invalid parameter (int) age_days needs to be > 0");
+    }
     
     $max = (int) $config->get('purge-num');
-    if ($max < 1)
+    if ($max < 1) {
       throw new \Exception("Invalid parameter (int) max needs to be > 0");
+    }
     
     $whereFilter = ($config->get('close-only-answered-' . $group_id)) ? ' AND isanswered=1' : '';
     $whereFilter .= ($config->get('close-only-overdue-' . $group_id)) ? ' AND isoverdue=1' : '';
@@ -257,14 +289,16 @@ ORDER BY ticket_id ASC
 LIMIT %d",
       TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
     
-    if (self::DEBUG)
+    if (self::DEBUG) {
       error_log("Looking for tickets with query: $sql");
+    }
     
     $r = db_query($sql);
     // Fill an array with just the ID's of the tickets:
     $ids = array();
-    while ($i = db_fetch_array($r, MYSQLI_ASSOC))
+    while ($i = db_fetch_array($r, MYSQLI_ASSOC)) {
       $ids[] = $i['ticket_id'];
+    }
     
     return $ids;
   }
@@ -283,8 +317,9 @@ LIMIT %d",
     static $robot;
     if (! isset($robot)) {
       $robot = $this->getConfig()->get('robot-account');
-      if ($robot)
+      if ($robot) {
         $robot = Staff::lookup($robot);
+      }
     }
     
     // We need to override this for the notifications
@@ -300,7 +335,7 @@ LIMIT %d",
         $ticket->logNote(__('AutoCloser Error'),
           __(
             'Unable to send reply, no assigned Agent on ticket, and no Robot account specified in config.'),
-          get_class(), FALSE);
+          self::PLUGIN_NAME, FALSE);
         return;
       }
     }
@@ -308,37 +343,41 @@ LIMIT %d",
     $thisstaff = $assignee;
     
     // Replace any ticket variables in the message:
-    $variables = array(
+    $variables = [
       'recipient' => $ticket->getOwner()
-    );
+    ];
     
     // Provide extra variables.. because. :-)
-    $options = array(
+    $options = [
       'wholethread' => 'fetch_whole_thread',
       'firstresponse' => 'fetch_first_response',
       'lastresponse' => 'fetch_last_response'
-    );
+    ];
     
     // See if they've been used, if so, call the function
     foreach ($options as $option => $method) {
-      if (strpos($admin_reply, $option) !== FALSE)
+      if (strpos($admin_reply, $option) !== FALSE) {
         $variables[$option] = $this->{$method}($ticket);
+      }
     }
     
+    // Use the Ticket objects own replaceVars method, which replace
+    // any other Ticket variables.
     $custom_reply = $ticket->replaceVars($admin_reply, $variables);
     
     // Build an array of values to send to the ticket's postReply function
     // 'emailcollab' => FALSE // don't send notification to all collaborators.. maybe.. dunno.
-    $vars = array(
+    $vars = [
       'response' => $custom_reply
-    );
-    $errors = array();
+    ];
+    $errors = [];
     
     // Send the alert without claiming the ticket on our assignee's behalf.
-    if (! $sent = $ticket->postReply($vars, $errors, TRUE, FALSE))
+    if (! $sent = $ticket->postReply($vars, $errors, TRUE, FALSE)) {
       $ticket->LogNote(__('Error Notification'),
-        __('We were unable to post a reply to the ticket creator.'), get_class(),
-        FALSE);
+        __('We were unable to post a reply to the ticket creator.'),
+        self::PLUGIN_NAME, FALSE);
+    }
   }
 
   /**
@@ -348,11 +387,18 @@ LIMIT %d",
    * @return string
    */
   private function fetch_first_response(Ticket $ticket) {
-    // Apparently the ORM is fighting me.. it doesn't like pulling arbitrary threads using common semantics repeatably.. ffs
-    // Let's try it a different way.
-    $ticket->getClientThread(); // trick it.. 
-    $response = $ticket->getResponses()->first();
-    return $this->render_thread_piece($response);
+    // Apparently the ORM is fighting me.. it doesn't like me
+    $thread = $ticket->getThread();
+    if (! $thread instanceof Thread) {
+      return '';
+    }
+    foreach ($thread->getEntries()->all() as $entry) {
+      if ($this->is_valid_thread_entry($entry, FALSE, TRUE)) {
+        // this is actually a Response. yes..
+        return $this->render_thread_entry($entry);
+      }
+    }
+    return ''; // the empty string overwrites the template
   }
 
   /**
@@ -362,11 +408,21 @@ LIMIT %d",
    * @return string
    */
   private function fetch_last_response(Ticket $ticket) {
-    $ticket->getClientThread(); // trick it..     
-    $response = $ticket->getResponses()
-      ->order_by('created', QuerySet::DESC)
-      ->first();
-    return $this->render_thread_piece($response);
+    $thread = $ticket->getThread();
+    if (! $thread instanceof Thread) {
+      return '';
+    }
+    
+    $last = '';
+    // Can't seem to get this sorted in reverse.. thought I had it, but nope.
+    foreach ($thread->getEntries()->all() as $entry) {
+      if ($this->is_valid_thread_entry($entry, FALSE, TRUE)) {
+        // We'll just render each response, overwriting the previous one..
+        // screw it. 
+        $last = $this->render_thread_entry($entry);
+      }
+    }
+    return $last; // the empty string overwrites the template
   }
 
   /**
@@ -377,22 +433,81 @@ LIMIT %d",
    */
   private function fetch_whole_thread(Ticket $ticket) {
     $msg = '';
-    $ticket->getClientThread(); // trick it.. 
-    foreach ($ticket->getClientThread()->all() as $entry) {
-      $msg .= $this->render_thread_piece($entry);
+    $thread = $ticket->getThread();
+    if (! $thread instanceof Thread) {
+      return $msg;
+    }
+    
+    // Iterate through all the thread entries (in order), 
+    // Not sure the ->order_by() thing even does anything.
+    foreach ($thread->getEntries()
+      ->order_by('created', QuerySet::ASC)
+      ->all() as $entry) {
+      // Test each entries data-model, and the type of entry from it's model
+      if ($this->is_valid_thread_entry($entry, TRUE, TRUE)) {
+        // this is actually a Response or Message yes..
+        $msg .= $this->render_thread_entry($entry);
+      }
     }
     return $msg;
   }
 
-  private function render_thread_piece(AnnotatedModel $entry) {
+  /**
+   * Renders a ThreadEntry as HTML.
+   *
+   * @param AnnotatedModel $entry
+   * @return string
+   */
+  private function render_thread_entry(AnnotatedModel $entry) {
+    $from = ($entry->get('type') == 'R') ? 'Sent' : 'Received';
     $tag = ($entry->get('format') == 'text') ? 'pre' : 'p';
+    $when = Format::datetime(strtotime($entry->get('created')));
+    // TODO: Maybe make this a CannedResponse or admin template? 
     return <<<PIECE
 <hr />
 <p class="thread">
   <h3>{$entry->get('title')}</h3>
+  <p>$from Date: $when</p>
   <$tag>{$entry->get('body')}</$tag>
 </p>
 PIECE;
+  }
+
+  /**
+   * $entry should be an AnnotatedModel object, however, we need to check that
+   * it's actually a type of ThreadEntry, therefore we need to interrogate the
+   * Object inside it. Would be good if the $ticket->getResponses() method
+   * worked..
+   *
+   * @param AnnotatedModel $entry
+   * @param bool $message
+   * @param bool $response
+   * @return boolean
+   */
+  private function is_valid_thread_entry(AnnotatedModel $entry, $message = FALSE,
+    $response = FALSE) {
+    if (! $entry->model instanceof ThreadEntry) {
+      return FALSE;
+    }
+    if (! $message && ! $response) {
+      // you gotta pick one ..
+      return FALSE;
+    }
+    if (self::DEBUG) {
+      printf("Testing thread entry: %s : %s\n", $entry->get('type'),
+        $entry->get('title'));
+    }
+    if (isset($entry->model->ht['type'])) {
+      if ($response && $entry->get('type') == 'R') {
+        // this is actually a Response
+        return TRUE;
+      }
+      elseif ($message && $entry->get('type') == 'M') {
+        // this is actually a Message
+        return TRUE;
+      }
+    }
+    return FALSE;
   }
 
   /**
@@ -405,8 +520,9 @@ PIECE;
   function uninstall() {
     $errors = array();
     global $ost;
-    $ost->alertAdmin(get_class() . ' has been uninstalled',
-      "Old open tickets will remain active.", true);
+    // Send an alert to the system admin:
+    $ost->alertAdmin(self::PLUGIN_NAME . ' has been uninstalled',
+      "You wanted that right?", true);
     
     parent::uninstall($errors);
   }
