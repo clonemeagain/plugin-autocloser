@@ -58,7 +58,7 @@ The canned responses are normal canned responses, configurable by anyone with a 
 
 
 ### To reset the config
-Simply "Delete" the plugin and isntall it again, all the configuration will reset from the defaults.
+Simply "Delete" the plugin and install it again, all the configuration will reset from the defaults.
 Admin panel -> Manage -> Plugins, slect the checkbox next to `Ticket Closer` then, from the drop-down select "Delete", then "Yes, Do it!" from the popup. It's not actually deleting the plugin, just it's config. 
 Then go through the "Add New Plugin" process again.
 
