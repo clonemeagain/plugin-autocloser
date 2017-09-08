@@ -114,9 +114,9 @@ class CloserPluginConfig extends PluginConfig {
         ]),
       'purge-num' => new TextboxField(
         [
-          'label' => $__('Tickets to close per run per group'),
+          'label' => $__('Tickets to process per run per group'),
           'hint' => $__(
-            "How many tickets should we close each time for each group? (small for auto-cron)"),
+            "How many tickets should we change each time for each group? (small for auto-cron)"),
           'default' => 20
         ]),
       'robot-account' => new ChoiceField(
