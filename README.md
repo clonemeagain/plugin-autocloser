@@ -23,7 +23,7 @@ Visit the Admin-panel, select Manage => Plugins, choose the `Ticket Closer` plug
 
 - Check Frequency: Drop down selector for how often you want the plugin to check the tickets? Default is every 2 hours, can be set to run every time cron is run, or once a year.. [Open an issue](https://github.com/clonemeagain/plugin-autocloser/issues/new) for more options if required. 
 - Use Autocron: A checkbox to enable checking via Autocron, (default unchecked). If you don't have a cron config 
-- Tickets to close per run per group: How many tickets could we close if we are to close old open tickets? The maximum per run per group basically. If you enter 5, then every "Check Frequency" the plugin will attempt to close up to 5 open tickets that have had no activity for Max open Ticket age, for every enabled group.
+- Tickets to process per run per group: How many tickets could we close if we are to close old open tickets? The maximum per run per group basically. If you enter 5, then every "Check Frequency" the plugin will attempt to close up to 5 open tickets that have had no activity for Max open Ticket age, for every enabled group.
 - Robot Account: Default is "ONLY Send as Ticket's Assigned Agent", if there isn't an assigned agent, an error message will be posted to the thread as a Note (not visible to User). However, the real fun begins when you pick someone to act as the Robot. You can create an agent account with any name/settings you like, even disable it, and then select it from this list to act on your behalf as the ticket-closer. If you don't select someone, it will send and close as if the assigned staff member did it. If a ticket is assigned to a team not an agent, it treats it like nobody is assigned.
 
 ### Explanation of Setting Groups
