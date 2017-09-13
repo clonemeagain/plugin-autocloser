@@ -5,7 +5,7 @@
  * @author Grizly <clonemeagain@gmail.com>
  * @see https://github.com/clonemeagain/plugin-autocloser
  */
-foreach (array(
+foreach ([
   'canned',
   'format',
   'list',
@@ -15,7 +15,7 @@ foreach (array(
   'ticket',
   'signal',
   'staff'
-) as $c) {
+] as $c) {
   require_once INCLUDE_DIR . "class.$c.php";
 }
 require_once 'config.php';
