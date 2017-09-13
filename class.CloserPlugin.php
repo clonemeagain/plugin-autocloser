@@ -10,6 +10,7 @@ foreach (array(
   'format',
   'list',
   'orm',
+  'misc',
   'plugin',
   'ticket',
   'signal',
@@ -181,7 +182,7 @@ class CloserPlugin extends Plugin {
   private function is_time_to_run(PluginConfig $config) {
     // We can store arbitrary things in the config, like, when we ran this last:
     $last_run = $config->get('last-run');
-    $now = time(); // Assume server timezone doesn't change enough to break this
+    $now = Misc::dbtime(); // Never assume about time.. 
     $config->set('last-run', $now);
     
     // assume a freqency of "Every Cron" means it is always overdue
