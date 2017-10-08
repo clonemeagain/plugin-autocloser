@@ -77,7 +77,7 @@ class CloserPluginConfig extends PluginConfig {
     // Build array of Agents
     $staff[0] = $__('ONLY Send as Ticket\'s Assigned Agent');
     foreach (Staff::objects() as $s) {
-      $staff[$s->getId()] = $s->getName();
+      $staff[$s->getId()] = (string) $s->getName(); // Force 1.10.1 class to string
     }
     
     $global_settings = [
