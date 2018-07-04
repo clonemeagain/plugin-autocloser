@@ -8,6 +8,7 @@ Automatically closes tickets that haven't been updated in a while.
 ## Caveats/Assumptions:
 
 - Assumes [osTicket](https://github.com/osTicket/) v1.10+ is installed. The API changes a bit between versions.. Open an issue to support older versions.
+- Assumes PHP 5.6+ is being used on the server. (Earlier versions will cause crash when plugin enabled)
 - Assumes you have cron configured! It works from cron calls, so if you don't have it enabled, you _will_ need to tick the "Autocron" option in the settings. [Guide to osTicket cron](http://osticket.com/wiki/POP3/IMAP_Setting_Guide#Recurring_tasks_scheduler_.28Cron_Job.29)
 - The plugin does not attempt to close tickets with open Tasks (same as core).
 
