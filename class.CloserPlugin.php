@@ -7,7 +7,7 @@
  * @see https://github.com/clonemeagain/plugin-autocloser
  */
 foreach ([
-'canned',
+ 'canned',
  'format',
  'list',
  'orm',
@@ -356,7 +356,8 @@ LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
         // Build an array of values to send to the ticket's postReply function
         // 'emailcollab' => FALSE // don't send notification to all collaborators.. maybe.. dunno.
         $vars = [
-            'response' => $custom_reply
+            'response' => $custom_reply,
+            'reply-to' => 'user'
         ];
         $errors = [];
 
