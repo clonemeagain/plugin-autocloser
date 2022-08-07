@@ -31,7 +31,7 @@ class CloserPluginConfig extends PluginConfig {
         return Plugin::translate('closer');
     }
 
-    function pre_save($config, &$errors) {
+    function pre_save(&$config, &$errors) {
         list ($__, $_N) = self::translate();
 
         // Validate the free-text fields of numerical configurations are in fact numerical..
