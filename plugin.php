@@ -1,6 +1,6 @@
 <?php return array(
  'id' => 'clonemeagain:autocloser', # notrans
- 'version' => '3.1',
+ 'version' => '3.1.1',
  'name' => 'Ticket Closer',
  'author' => 'clonemeagain@gmail.com',
  'description' => 'Changes ticket statuses based on age.',
@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [3.1.1] - 2023-01-15
+### Added
+- Changed an $ost->logWarning into $this->LOG[] which I missed earlier.
 
 ## [3.1.0] - 2023-01-15
 ### Added

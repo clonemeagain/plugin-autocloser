@@ -10,7 +10,7 @@
  * @see https://github.com/Cartmega/plugin-autocloser 
  */
 foreach ([
-'canned',
+ 'canned',
  'format',
  'list',
  'orm',
@@ -142,7 +142,7 @@ class CloserPlugin extends Plugin {
                         // Fetch ticket as an Object
                         $ticket = Ticket::lookup($ticket_id);
                         if (!$ticket instanceof Ticket) {
-	                        $ost->logWarning("CloserPlugin", "Ticket $ticket_id was not instatiable. :-(", false);
+	                        $this->LOG[]="Ticket $ticket_id was not instatiable. :-(";
                             continue;
                         }
 
