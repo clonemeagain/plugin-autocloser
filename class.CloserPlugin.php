@@ -37,7 +37,15 @@ class CloserPlugin extends Plugin {
      *
      * @var boolean
      */
-    const DEBUG = TRUE;
+    const DEBUG = FALSE;
+
+    /**
+     * Keeps all log entries for each run
+     * for output to syslog
+     *
+     * @var array
+     */
+    private $LOG = array();
 
     /**
      * The name that appears in threads as: Closer Plugin.
@@ -91,7 +99,7 @@ class CloserPlugin extends Plugin {
                 try {
                     $open_ticket_ids = $this->find_ticket_ids($config);
                     if (self::DEBUG) {
-                        $ost->logWarning("CloserPlugin", count($open_ticket_ids) . " open tickets.", false);
+                    		$this->LOG[]=count($open_ticket_ids) . " open tickets.";
                     }
 
                     // Bail if there is no work to do
@@ -121,8 +129,7 @@ class CloserPlugin extends Plugin {
                     }
 
                     if (self::DEBUG) {
-                        print
-                                "Found the following details:\nAdmin Note: $admin_note\n\nAdmin Reply: $admin_reply\n";
+                    		$this->LOG[]="Found the following details:\nAdmin Note: $admin_note\n\nAdmin Reply: $admin_reply\n";
                     }
 
                     // Get the robot for this config
@@ -164,12 +171,15 @@ class CloserPlugin extends Plugin {
                         // Actually change the ticket status
                         $this->change_ticket_status($ticket, $new_status);
                     }
+
+                    $this->print2log();
+                        
                 } catch (Exception $e) {
                     // Well, something borked
-                    $ost->logWarning("CloserPlugin", "Exception encountered, we'll soldier on, but something is broken!", false);
-                    $ost->logWarning("CloserPlugin", $e->getMessage(), false);
-                    if (self::DEBUG)
-                        print_r($e->getTrace());
+                    $this->LOG[]="Exception encountered, we'll soldier on, but something is broken!";
+                    $this->LOG[]=$e->getMessage();
+                    if (self::DEBUG) {$this->LOG[]='<pre>'.print_r($e->getTrace(),2).'</pre>';}
+                    $this->print2log();
                 }
         }
     }
@@ -222,7 +232,9 @@ class CloserPlugin extends Plugin {
     private function change_ticket_status(Ticket $ticket, TicketStatus $new_status) {
 	 global $ost;
         if (self::DEBUG) {
-            $ost->logWarning("CloserPlugin", "Setting status " . $new_status->getState() . " for ticket {$ticket->getId()}::{$ticket->getSubject()}", false);
+        	$this->LOG[]=
+                    "Setting status " . $new_status->getState() .
+                    " for ticket {$ticket->getId()}::{$ticket->getSubject()}";
         }
 
         // Start by setting the last update and closed timestamps to now
@@ -292,7 +304,7 @@ ORDER BY ticket_id ASC
 LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
 
         if (self::DEBUG) {
-            $ost->logWarning("CloserPlugin", "Looking for tickets with query: $sql", false);
+        	$this->LOG[]="Looking for tickets with query: $sql";
         }
 
         $r = db_query($sql);
@@ -481,7 +493,7 @@ PIECE;
             return FALSE;
         }
         if (self::DEBUG) {
-            printf("Testing thread entry: %s : %s\n", $entry->get('type'), $entry->get('title'));
+        	$this->LOG[]=printf("Testing thread entry: %s : %s\n", $entry->get('type'), $entry->get('title'));
         }
         if (isset($entry->model->ht['type'])) {
             if ($response && $entry->get('type') == 'R') {
@@ -518,4 +530,15 @@ PIECE;
         return array();
     }
 
+    /**
+     * Outputs all log entries to the syslog
+     *
+     */
+    private function print2log() {
+    	 global $ost;
+    	 if (empty($this->LOG)) {return false;}
+ 	 $msg='';
+ 	 foreach($this->LOG as $key=>$value) {$msg.=$value.'<br>';}
+	 $ost->logWarning(self::PLUGIN_NAME, $msg, false);
+    }
 }
