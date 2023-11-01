@@ -3,8 +3,7 @@
 /**
  * @file class.CloserPlugin.php :: Requires PHP5.6+
  *
- * @author Grizly <clonemeagain@gmail.com>
- * @see https://github.com/clonemeagain/plugin-autocloser
+ * @author Blake Psychology Team
  */
 foreach ([
  'canned',
@@ -34,7 +33,7 @@ class CloserPlugin extends Plugin {
      *
      * @var boolean
      */
-    const DEBUG = FALSE;
+    const DEBUG = TRUE;
 
     /**
      * The name that appears in threads as: Closer Plugin.
@@ -300,6 +299,27 @@ LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
         while ($i = db_fetch_array($r, MYSQLI_ASSOC)) {
             $ids[] = $i['ticket_id'];
         }
+
+        // Customisation by Prism Cloud Inc
+        // Get all Ticket IDs that are answered but last customer reply is later
+        $answered_ticket_ids_sql = sprintf("
+            SELECT ticket_id 
+            FROM %s WHERE updated < DATE_SUB(NOW(), INTERVAL %d DAY)
+            AND status_id=%d %s
+            AND isanswered = 1
+            ORDER BY ticket_id ASC
+            LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
+
+        if (self::DEBUG) {
+            error_log("Looking for tickets with query: $sql");
+        }
+
+        $answered_ticket_ids_r = db_query($answered_ticket_ids_sql);
+        // Fill an array with just the ID's of the tickets:
+        while ($i = db_fetch_array($answered_ticket_ids_r, MYSQLI_ASSOC)) {
+            $ids[] = $i['ticket_id'];
+        }
+
 
         return $ids;
     }
