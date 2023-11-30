@@ -1,19 +1,18 @@
 <?php
-
+/**
+ * @file config.php :: 
+ * @  requires osTicket 1.17+ & PHP8.0+
+ * @  multi-instance: yes
+ *
+ * @author Grizly <clonemeagain@gmail.com>
+ * @see https://github.com/clonemeagain/plugin-autocloser
+ * @fork by Cartmega <www.cartmega.com>
+ * @see https://github.com/Cartmega/plugin-autocloser 
+ */
 require_once INCLUDE_DIR . 'class.plugin.php';
 require_once INCLUDE_DIR . 'class.message.php';
 
 class CloserPluginConfig extends PluginConfig {
-
-    /**
-     * How many groups of settings we support. Note: Changing this is a matter of
-     * uninstalling, changing, then reinstalling. Sounds stupid, but no, if you
-     * try and change it live, you risk losing all plugin settings. Not kidding.
-     * Tried to make it dynamic, doesn't work.
-     *
-     * @var integer
-     */
-    const NUMBER_OF_SETTINGS = 4;
 
     // Provide compatibility function for versions of osTicket prior to
     // translation support (v1.9.4)
@@ -35,24 +34,29 @@ class CloserPluginConfig extends PluginConfig {
         list ($__, $_N) = self::translate();
 
         // Validate the free-text fields of numerical configurations are in fact numerical..
-        if (!is_numeric($config['purge-num'])) {
-            $errors['err'] = $__('Only a numeric value is valid for Purge Number.');
-            return FALSE;
-        }
-        foreach (range(1, self::NUMBER_OF_SETTINGS) as $i) {
-            if (isset($config['purge-age-' . $i]) &&
-                    !is_numeric($config['purge-age-' . $i])) {
+        if (isset($config['purge-num']) &&
+	        !is_numeric($config['purge-num'])) {
+	            $errors['err'] = $__('Only a numeric value is valid for Purge Number.');
+	            return FALSE;
+	        }
+	
+            if (isset($config['purge-age']) &&
+                    !is_numeric($config['purge-age'])) {
                 $errors['err'] = $__(
-                        'Group ' . $i . ' Max Ticket age only supports numeric values.');
+                        'Max Ticket age only supports numeric values.');
                 return FALSE;
             }
-        }
+            if (!(isset($config['robot-account'])) || ($config[('robot-account')]==0)) {
+            	//echo '<pre>'.print_r('robot-account'.' is not set "'.$config[('robot-account')].'"',2).'</pre>';
+                $errors['err'] = $__('Please choose a robot-account.');
+                return FALSE;            	
+            }
+            if (!(isset($config['admin-reply'])) || ($config[('admin-reply')]==0)) {
+            	//echo '<pre>'.print_r('admin-reply'.' is not set "'.$config[('admin-reply')].'"',2).'</pre>';
+                $errors['err'] = $__('Please choose an admin-reply.');
+                return FALSE;            	
+            }
 
-        if (self::NUMBER_OF_SETTINGS < 1) {
-            $errors['err'] = $__(
-                    "You must have at least 1 setting group, otherwise, you should disable the plugin.");
-            return FALSE;
-        }
         return TRUE;
     }
 
@@ -76,9 +80,9 @@ class CloserPluginConfig extends PluginConfig {
             $statuses[$id] = $name;
         }
         // Build array of Agents
-        $staff[0] = $__('ONLY Send as Ticket\'s Assigned Agent');
+        $staff[-1] = $__('ONLY Send as Ticket\'s Assigned Agent');
         foreach (Staff::objects() as $s) {
-            $staff[$s->getId()] = $s->getName();
+            $staff[$s->getId()] = (string) $s->getName();
         }
 
         $global_settings = [
@@ -90,7 +94,7 @@ class CloserPluginConfig extends PluginConfig {
                     [
                 'label' => $__('Check Frequency'),
                 'choices' => [
-                    '0' => $__('Every Cron'),
+                    '-1' => $__('Every Cron'),
                     '1' => $__('Every Hour'),
                     '2' => $__('Every 2 Hours'),
                     '6' => $__('Every 6 Hours'),
@@ -114,40 +118,24 @@ class CloserPluginConfig extends PluginConfig {
                     ]),
             'purge-num' => new TextboxField(
                     [
-                'label' => $__('Tickets to process per run per group'),
+                'label' => $__('Tickets to process per run'),
                 'hint' => $__(
-                        "How many tickets should we change each time for each group? (small for auto-cron)"),
+                        "How many tickets should we change each time? (small for auto-cron)"),
                 'default' => 20
                     ]),
         ];
 
-        // Configure groups to associate a status change with a canned response notification:
+        // Configure group to associate a status change with a canned response notification:
         // Get all the canned responses to use as selections:
         $responses = Canned::getCannedResponses();
-        $responses['0'] = $__('Send no Reply');
+        $responses['-1'] = $__('Send no Reply');
+        ksort($responses);
 
-        // Build an array of group configurations:
-        $config_groups = [];
-        foreach (range(1, self::NUMBER_OF_SETTINGS) as $i) {
-            $gn = $this->get('group-name-' . $i);
-            $gn = $gn ? ': ' . $gn : '';
-            $config_groups[] = [
-                'group' . $i => new SectionBreakField(
-                        [
-                    'label' => $__('Group ' . $i . $gn)
-                        ]),
-                'group-enabled-' . $i => new BooleanField(
-                        [
-                    'label' => __('Enable Group'),
-                    'hint' => __('Groups can be configured without being enabled. '),
-                    'default' => ($i == 1) ? TRUE : FALSE // Enable first group by default.
-                        ]),
-                'group-name-' . $i => new TextboxField(
-                        [
-                    'label' => 'Groupname',
-                    'hint' => $__('Name this group')
-                        ]),
-                'purge-age-' . $i => new TextboxField(
+        // Build a group configuration:
+        $config_group = [];
+
+            $config_group[] = [
+                'purge-age' => new TextboxField(
                         [
                     'default' => '999',
                     'label' => $__('Max Ticket age in days'),
@@ -156,19 +144,19 @@ class CloserPluginConfig extends PluginConfig {
                     'size' => 5,
                     'length' => 4
                         ]),
-                'close-only-answered-' . $i => new BooleanField(
+                'close-only-answered' => new BooleanField(
                         [
                     'default' => TRUE,
                     'label' => $__('Only change tickets with an Agent Response'),
                     'hint' => ''
                         ]),
-                'close-only-overdue-' . $i => new BooleanField(
+                'close-only-overdue' => new BooleanField(
                         [
                     'default' => FALSE,
                     'label' => $__('Only change tickets past expiry date'),
                     'hint' => $__('Default ignores expiry')
                         ]),
-                'from-status-' . $i => new ChoiceField(
+                'from-status' => new ChoiceField(
                         [
                     'label' => $__('From Status'),
                     'choices' => $statuses,
@@ -176,7 +164,7 @@ class CloserPluginConfig extends PluginConfig {
                     'hint' => $__(
                             'When we change the ticket, what are we changing the status from? Default is "Open"')
                         ]),
-                'to-status-' . $i => new ChoiceField(
+                'to-status' => new ChoiceField(
                         [
                     'label' => $__('To Status'),
                     'choices' => $statuses,
@@ -184,7 +172,7 @@ class CloserPluginConfig extends PluginConfig {
                     'hint' => $__(
                             'When we change the ticket, what are we changing the status to? Default is "Closed"')
                         ]),
-                'admin-note-' . $i => new TextareaField(
+                'admin-note' => new TextareaField(
                         [
                     'label' => $__('Auto-Note'),
                     'hint' => $__('Create\'s an admin note just before closing.'),
@@ -195,7 +183,7 @@ class CloserPluginConfig extends PluginConfig {
                         'length' => 256
                     ]
                         ]),
-                'robot-account-' . $i => new ChoiceField(
+                'robot-account' => new ChoiceField(
                         [
                     'label' => $__('Robot Account'),
                     'choices' => $staff,
@@ -203,7 +191,7 @@ class CloserPluginConfig extends PluginConfig {
                     'hint' => $__(
                             'Select account for sending replies, account can be locked, still works.')
                         ]),
-                'admin-reply-' . $i => new ChoiceField(
+                'admin-reply' => new ChoiceField(
                         [
                     'label' => $__('Auto-Reply Canned Response'),
                     'hint' => $__(
@@ -211,21 +199,18 @@ class CloserPluginConfig extends PluginConfig {
                     'choices' => $responses
                         ])
             ];
-        }
 
         if (version_compare(PHP_VERSION, '5.6.0') >= 0) {
             // Merge all the group configurations into the global settings array and return as the config
-            return array_merge($global_settings, ...$config_groups);
+            return array_merge($global_settings, ...$config_group);
         }
 
 
         // Support pre 5.6... oi vey
         $settings = $global_settings;
-        foreach ($config_groups as $group) {
-            foreach ($group as $setting) {
+            foreach ($config_group as $setting) {
                 $settings[] = $setting;
             }
-        }
         return $settings;
     }
 
