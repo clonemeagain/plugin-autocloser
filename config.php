@@ -181,7 +181,7 @@ class CloserPluginConfig extends PluginConfig {
                     })(),
                     'configuration' => ['multiselect' => true],
                     'default' => [],
-                    'hint' => __('Only tickets with one of these help topics will be processed. Leave empty to include all topics.')
+                    'hint' => $__('Only tickets with one of these help topics will be processed. Leave empty to include all topics.')
                         ]),
                 'to-status' => new ChoiceField(
                         [
@@ -195,7 +195,7 @@ class CloserPluginConfig extends PluginConfig {
                         [
                     'label' => $__('Auto-Note'),
                     'hint' => $__('Create\'s an admin note just before closing.'),
-                    'default' => 'Auto-closed for being open too long with no updates.',
+                    'default' => $__('Auto-closed for being open too long with no updates.'),
                     'configuration' => [
                         'html' => FALSE,
                         'size' => 40,

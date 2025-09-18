@@ -1,12 +1,16 @@
-<?php return array(
+<?php
+// load translations
+list($__, $_N) = Plugin::translate('closer');
+
+return array(
  'id' => 'clonemeagain:autocloser', # notrans
  'version' => '3.1.1',
- 'name' => 'Ticket Closer',
+ 'name' => /* trans */ $__('Ticket Closer'),
  'author' => 'clonemeagain@gmail.com',
- 'description' => 'Changes ticket statuses based on age.',
+ 'description' => /* trans */ $__('Changes ticket statuses based on age.'),
  'url' => 'https://github.com/clonemeagain/osticket-plugin-closer',
  'plugin' => 'class.CloserPlugin.php:CloserPlugin',
- 'ost_version' =>    '1.17', # Require osTicket v1.17	
+ 'ost_version' => '1.17', # Require osTicket v1.17
 );
 
 /*
