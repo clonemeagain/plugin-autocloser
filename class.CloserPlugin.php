@@ -237,21 +237,12 @@ class CloserPlugin extends Plugin {
                     " for ticket {$ticket->getId()}::{$ticket->getSubject()}";
         }
 
-        // Start by setting the last update and closed timestamps to now
-        $ticket->closed = $ticket->lastupdate = SqlFunction::NOW();
-
-        // Remove any duedate or overdue flags
-        $ticket->duedate = null;
-        $ticket->clearOverdue(FALSE); // flag prevents saving, we'll do that
-        // Post an Event with the current timestamp.
-        $ticket->logEvent($new_status->getState(), [
-            'status' => [
-                $new_status->getId(),
-                $new_status->getName()
-            ]
-        ]);
-        // Actually apply the new "TicketStatus" to the Ticket.
-        $ticket->status = $new_status;
+        // set the new status
+        $comments = '';
+        $errors = [];
+        $set_closing_agent = false;
+        $force_close = false;
+        $ticket->setStatus($new_status, $comments, $errors, $set_closing_agent, $force_close);
 
         // Save it, flag prevents it refetching the ticket data straight away (inefficient)
         $ticket->save(FALSE);
@@ -286,19 +277,13 @@ class CloserPlugin extends Plugin {
         $whereFilter = ($config->get('close-only-answered')) ? ' AND isanswered=1' : '';
         $whereFilter .= ($config->get('close-only-overdue')) ? ' AND isoverdue=1' : '';
 
-        $help_topics = $config->get('help-topics'); // IDs der ausgewählten Hilfsthemen
-
-        // Extrahiere die Keys, falls es ein assoziatives Array ist
+        $help_topics = $config->get('help-topics'); // get help topic config
+        // extract array keys as topic_ids, if help topics selected
         if (is_array($help_topics) && count($help_topics)) {
-            $topic_ids = array_keys($help_topics);
-            $topic_ids = array_filter(array_map('intval', $topic_ids));
+            $topic_ids = array_filter(array_map('intval', array_keys($help_topics)));
             if (count($topic_ids)) {
-                $topic_filter = sprintf(' AND topic_id IN (%s)', implode(',', $topic_ids));
-            } else {
-                $topic_filter = '';
+                $whereFilter .= sprintf(' AND topic_id IN (%s)', implode(',', $topic_ids));
             }
-        } else {
-            $topic_filter = '';
         }
 
         // Ticket query, note MySQL is doing all the date maths:
@@ -314,9 +299,9 @@ class CloserPlugin extends Plugin {
                 "
 SELECT ticket_id 
 FROM %s WHERE lastupdate < DATE_SUB(NOW(), INTERVAL %d DAY)
-AND status_id=%d %s %s
+AND status_id=%d %s
 ORDER BY ticket_id ASC
-LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $topic_filter, $max);
+LIMIT %d", TICKET_TABLE, $age_days, $from_status, $whereFilter, $max);
 
         if (self::DEBUG) {
         	$this->LOG[]="Looking for tickets with query: $sql";
@@ -530,7 +515,6 @@ PIECE;
      * @see Plugin::uninstall()
      */
     function uninstall(&$errors) {
-        $errors = array();
         global $ost;
         // Send an alert to the system admin:
         $ost->alertAdmin(self::PLUGIN_NAME . ' has been uninstalled', "You wanted that right?", true);
