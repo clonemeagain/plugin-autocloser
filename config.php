@@ -183,6 +183,25 @@ class CloserPluginConfig extends PluginConfig {
                     'default' => [],
                     'hint' => __('Only tickets with one of these help topics will be processed. Leave empty to include all topics.')
                         ]),
+                'departments' => new ChoiceField(
+                        [
+                    'id' => 'departments',
+                    'label' => __('Departments'),
+                    'choices' => (function() {
+                        if (class_exists('Dept') && method_exists('Dept', 'getDepartments')) {
+                            try {
+                                $depts = Dept::getDepartments(null, true, true);
+                                return $depts ?: [];
+                            } catch (Throwable $e) {
+                                return [];
+                            }
+                        }
+                        return [];
+                    })(),
+                    'configuration' => ['multiselect' => true],
+                    'default' => [],
+                    'hint' => $__('Only tickets from one of these departments will be processed. Leave empty to include all departments.')
+                        ]),
                 'to-status' => new ChoiceField(
                         [
                     'label' => $__('To Status'),

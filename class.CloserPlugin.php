@@ -301,6 +301,15 @@ class CloserPlugin extends Plugin {
             $topic_filter = '';
         }
 
+        $depts = $config->get('departments'); // get department config
+        // extract array keys as dept_ids, if departments selected
+        if (is_array($depts) && count($depts)) {
+            $dept_ids = array_filter(array_map('intval', array_keys($depts)));
+            if (count($dept_ids)) {
+                $whereFilter .= sprintf(' AND dept_id IN (%s)', implode(',', $dept_ids));
+            }
+        }
+
         // Ticket query, note MySQL is doing all the date maths:
         // Sidebar: Why haven't we moved to PDO yet?
         /*
